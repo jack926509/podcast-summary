@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Sidebar } from '@/components/layout/sidebar';
+import { AppShell } from '@/components/layout/app-shell';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
@@ -16,12 +16,9 @@ export default function RootLayout({
   return (
     <html lang="zh-TW">
       <body className="font-sans antialiased">
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto bg-background">
-            {children}
-          </main>
-        </div>
+        <AppShell>
+          {children}
+        </AppShell>
         <Toaster />
       </body>
     </html>

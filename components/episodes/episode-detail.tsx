@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,13 @@ interface EpisodeDetailProps {
 export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   const { episode, isPolling } = useEpisodePolling(initialEpisode);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = useCallback(async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  }, []);
 
   const summary = episode.summary;
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints, []);
@@ -43,18 +50,18 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
 
       {/* Processing state */}
       {isProcessing && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-primary/20 bg-primary/5">
           <CardContent className="flex items-center gap-3 py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
             <div>
-              <p className="text-sm font-medium text-blue-800">
+              <p className="text-sm font-medium text-primary">
                 {episode.status === EPISODE_STATUS.PENDING && '等待處理中...'}
                 {episode.status === EPISODE_STATUS.TRANSCRIBING && '正在進行語音轉錄，請稍候...'}
                 {episode.status === EPISODE_STATUS.SUMMARIZING && '正在生成 AI 摘要，請稍候...'}
               </p>
-              <p className="text-xs text-blue-600 mt-0.5">
-                {isPolling ? '每 3 秒自動更新狀態' : ''}
-              </p>
+              {isPolling && (
+                <p className="text-xs text-primary/70 mt-0.5">每 3 秒自動更新狀態</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -62,13 +69,13 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
 
       {/* Error state */}
       {episode.status === EPISODE_STATUS.ERROR && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-red-800">處理失敗</p>
+              <p className="text-sm font-medium text-destructive">處理失敗</p>
               {episode.errorMsg && (
-                <p className="text-xs text-red-600 mt-0.5">{episode.errorMsg}</p>
+                <p className="text-xs text-destructive/80 mt-0.5">{episode.errorMsg}</p>
               )}
             </div>
           </CardContent>
@@ -80,8 +87,20 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
         <>
           {/* Overview */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-base">整體摘要</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleCopy(summary.overview, 'overview')}
+              >
+                {copiedField === 'overview' ? (
+                  <Check className="h-4 w-4 text-success" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -146,6 +165,35 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
               ))}
             </div>
           )}
+
+          {/* Copy full summary */}
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const full = [
+                  `【整體摘要】\n${summary.overview}`,
+                  keyPoints.length > 0
+                    ? `\n【重點整理】\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
+                    : '',
+                  quotes.length > 0
+                    ? `\n【金句精選】\n${quotes.map((q) => `"${q}"`).join('\n')}`
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join('\n');
+                handleCopy(full, 'full');
+              }}
+            >
+              {copiedField === 'full' ? (
+                <Check className="h-4 w-4 mr-2 text-success" />
+              ) : (
+                <Copy className="h-4 w-4 mr-2" />
+              )}
+              {copiedField === 'full' ? '已複製！' : '複製全文摘要'}
+            </Button>
+          </div>
         </>
       )}
 
@@ -155,21 +203,35 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">完整逐字稿</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setTranscriptOpen((o) => !o)}
-              >
-                {transcriptOpen ? (
-                  <>
-                    <ChevronUp className="h-4 w-4 mr-1" /> 收合
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4 mr-1" /> 展開
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => handleCopy(episode.transcript!, 'transcript')}
+                >
+                  {copiedField === 'transcript' ? (
+                    <Check className="h-4 w-4 text-success" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTranscriptOpen((o) => !o)}
+                >
+                  {transcriptOpen ? (
+                    <>
+                      <ChevronUp className="h-4 w-4 mr-1" /> 收合
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4 mr-1" /> 展開
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           {transcriptOpen && (

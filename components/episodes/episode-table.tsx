@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,18 +13,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AlertDialog } from '@/components/ui/alert-dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { formatRelativeTime, truncate } from '@/lib/utils';
 import { EPISODE_STATUS } from '@/lib/constants';
 import type { PaginatedResponse, EpisodeWithRelations } from '@/lib/types';
+import { useState } from 'react';
 
 const PAGE_SIZE = 20;
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function EpisodeTable() {
-  const [status, setStatus] = useState<string>('all');
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const status = searchParams.get('status') ?? 'all';
+  const page = Number(searchParams.get('page') ?? '1');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  const updateParams = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    }
+    router.push(`?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   const query = new URLSearchParams({
     page: String(page),
@@ -37,20 +53,21 @@ export function EpisodeTable() {
     { refreshInterval: 5000 },
   );
 
-  const handleDelete = useCallback(
-    async (id: string, e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!confirm('確定要刪除這筆記錄嗎？')) return;
-      await fetch(`/api/episodes/${id}`, { method: 'DELETE' });
-      mutate();
-    },
-    [mutate],
-  );
+  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteTarget(id);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    await fetch(`/api/episodes/${deleteTarget}`, { method: 'DELETE' });
+    mutate();
+    setDeleteTarget(null);
+  }, [deleteTarget, mutate]);
 
   const handleStatusChange = (val: string) => {
-    setStatus(val);
-    setPage(1);
+    updateParams({ status: val === 'all' ? null : val, page: null });
   };
 
   return (
@@ -91,13 +108,27 @@ export function EpisodeTable() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {isLoading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                  載入中...
+            {/* Skeleton loading rows */}
+            {isLoading && Array.from({ length: 5 }).map((_, i) => (
+              <tr key={i} className="border-b">
+                <td className="px-4 py-3">
+                  <Skeleton className="h-4 w-48" />
+                </td>
+                <td className="px-4 py-3 hidden md:table-cell">
+                  <Skeleton className="h-4 w-24" />
+                </td>
+                <td className="px-4 py-3">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                </td>
+                <td className="px-4 py-3 hidden sm:table-cell">
+                  <Skeleton className="h-4 w-20" />
+                </td>
+                <td className="px-4 py-3 flex justify-end">
+                  <Skeleton className="h-8 w-8 rounded-md" />
                 </td>
               </tr>
-            )}
+            ))}
+
             {!isLoading && (!data?.items || data.items.length === 0) && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
@@ -155,7 +186,7 @@ export function EpisodeTable() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => updateParams({ page: String(Math.max(1, page - 1)) })}
               disabled={page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -163,7 +194,7 @@ export function EpisodeTable() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+              onClick={() => updateParams({ page: String(Math.min(data.totalPages, page + 1)) })}
               disabled={page === data.totalPages}
             >
               <ChevronRight className="h-4 w-4" />
@@ -171,6 +202,18 @@ export function EpisodeTable() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="刪除記錄"
+        description="確定要刪除這筆記錄嗎？此操作無法復原，摘要與逐字稿將一併刪除。"
+        confirmLabel="刪除"
+        cancelLabel="取消"
+        onConfirm={confirmDelete}
+        variant="destructive"
+      />
     </div>
   );
 }
