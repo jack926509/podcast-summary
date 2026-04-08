@@ -2,39 +2,64 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { SummaryResult } from '@/lib/types';
 import { TRANSCRIPT_CHUNK_CHARS } from '@/lib/constants';
 
-const SYSTEM_PROMPT = `你是一位專業的 Podcast 內容摘要助理。請仔細分析提供的逐字稿，並以繁體中文回應。
+// Sonnet for final (high-quality) output; Haiku for cheap chunk pre-processing
+const MODEL_QUALITY = 'claude-sonnet-4-5';
+const MODEL_FAST = 'claude-haiku-4-5-20251001';
 
-你必須只輸出以下格式的有效 JSON，不要包含任何其他文字、說明或 markdown 標記：
+const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。請仔細分析逐字稿，提取對投資者與知識學習者最有價值的資訊，以繁體中文回應。
+
+只輸出以下格式的有效 JSON，不包含任何其他文字或 markdown：
 
 {
-  "overview": "2-3 段的整體內容摘要，涵蓋主要主題與結論",
-  "keyPoints": ["重點1", "重點2", "重點3"],
-  "quotes": ["值得記錄的金句或精彩段落1", "金句2"],
-  "tags": ["主題標籤1", "標籤2", "標籤3"]
+  "overview": "3-4 段完整摘要，含本集核心主題、重要結論與值得關注的觀點",
+  "keyPoints": [
+    "【類別】具體重點，盡量包含數字、名稱或可行動的資訊",
+    "..."
+  ],
+  "quotes": ["原文金句或精彩見解（保留講者語氣）"],
+  "tags": ["主題標籤"]
 }
 
 規則：
-- overview：200-400 字的完整摘要
-- keyPoints：5-10 個條列式重點
-- quotes：3-6 個原文金句或精彩表達
-- tags：3-8 個主題關鍵字標籤
+- overview：300-500 字，依序涵蓋：背景脈絡 → 核心論點 → 重要數字或案例 → 結論與啟示
+- keyPoints：6-10 條，每條以【類別】開頭，類別範例：
+  【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】
+- quotes：3-5 個最有洞見、最值得記錄的原文語句
+- tags：4-8 個精準標籤，涵蓋產業、概念、地區、人名等維度
 - 所有內容使用繁體中文`;
 
-const SYNTHESIS_PROMPT = `你是一位專業的內容整合助理。以下是一個 Podcast 各段落的摘要，請整合成一份完整的最終摘要。
+const CHUNK_PROMPT = `你是內容摘要助理。請簡潔摘要以下 Podcast 片段，以繁體中文輸出有效 JSON：
+
+{
+  "overview": "此片段的核心內容（100-200 字）",
+  "keyPoints": ["重點1", "重點2"],
+  "quotes": ["金句"],
+  "tags": ["標籤"]
+}`;
+
+const SYNTHESIS_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。以下是同一集 Podcast 各片段的初步摘要，請整合成一份完整、高品質的最終摘要。
 
 只輸出以下格式的有效 JSON：
 
 {
-  "overview": "整合後的整體摘要（2-3 段）",
-  "keyPoints": ["整合後的重點列表"],
-  "quotes": ["整合後的金句列表"],
-  "tags": ["整合後的標籤"]
-}`;
+  "overview": "3-4 段完整摘要，含核心主題、重要結論、值得關注的觀點",
+  "keyPoints": [
+    "【類別】具體重點（含數字/名稱/可行動資訊）"
+  ],
+  "quotes": ["最值得記錄的原文金句"],
+  "tags": ["精準主題標籤"]
+}
+
+規則：
+- overview：300-500 字，背景脈絡 → 核心論點 → 重要數字/案例 → 結論與啟示
+- keyPoints：6-10 條，以【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【操作建議】等類別開頭
+- quotes：3-5 個最有洞見的原文語句
+- tags：4-8 個涵蓋產業、概念、地區、人名的精準標籤
+- 去除重複資訊，保留最有價值的內容`;
 
 /**
  * Split transcript into chunks by character count.
  * Tries to break at sentence boundaries (。！？\n) to avoid mid-sentence cuts.
- * Works correctly for both Chinese and English transcripts.
  */
 function chunkTranscript(transcript: string, maxChars: number): string[] {
   const chunks: string[] = [];
@@ -47,14 +72,13 @@ function chunkTranscript(transcript: string, maxChars: number): string[] {
       break;
     }
 
-    // Try to find a sentence boundary within the last 20% of the chunk
     const searchFrom = start + Math.floor(maxChars * 0.8);
     const segment = transcript.slice(searchFrom, end);
     const boundaryMatch = segment.search(/[。！？\n]/);
 
     const splitAt =
       boundaryMatch >= 0
-        ? searchFrom + boundaryMatch + 1 // include the punctuation
+        ? searchFrom + boundaryMatch + 1
         : end;
 
     chunks.push(transcript.slice(start, splitAt));
@@ -66,13 +90,9 @@ function chunkTranscript(transcript: string, maxChars: number): string[] {
 
 /** Extract JSON object from Claude response (handles markdown code blocks) */
 function extractJson(text: string): SummaryResult {
-  // Strip markdown code blocks if present
   const stripped = text.replace(/```(?:json)?\n?/g, '').trim();
-  // Find the first complete JSON object
   const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error('No JSON object found in Claude response');
-  }
+  if (!match) throw new Error('No JSON object found in Claude response');
   const parsed = JSON.parse(match[0]);
   return {
     overview: String(parsed.overview ?? ''),
@@ -85,6 +105,7 @@ function extractJson(text: string): SummaryResult {
 /** Call Claude API with retry logic */
 async function callClaude(
   client: Anthropic,
+  model: string,
   systemPrompt: string,
   userContent: string,
   retries = 3,
@@ -94,20 +115,18 @@ async function callClaude(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2048,
+        model,
+        max_tokens: model === MODEL_FAST ? 1024 : 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       });
 
       const text =
         response.content[0].type === 'text' ? response.content[0].text : '';
-
       return extractJson(text);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < retries - 1) {
-        // Exponential backoff: 2s, 4s, 8s
         await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt)));
       }
     }
@@ -118,33 +137,39 @@ async function callClaude(
 
 /**
  * Summarize a podcast transcript using Claude.
- * Uses map-reduce strategy for long transcripts (> TRANSCRIPT_CHUNK_CHARS * 2).
- * Uses character count instead of word count to handle Chinese transcripts correctly.
+ *
+ * Cost strategy:
+ * - Short transcripts  → Sonnet (single call, best quality)
+ * - Long transcripts   → Haiku per chunk (cheap) + Sonnet for final synthesis (quality)
+ *
+ * This keeps quality high for the output users actually read,
+ * while minimising token cost on bulk chunk pre-processing.
  */
 export async function summarizeTranscript(transcript: string): Promise<SummaryResult> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   if (transcript.length <= TRANSCRIPT_CHUNK_CHARS * 2) {
-    // Short enough for a single call
-    return callClaude(client, SYSTEM_PROMPT, transcript);
+    // Short enough — use Sonnet directly for best quality
+    return callClaude(client, MODEL_QUALITY, SYSTEM_PROMPT, transcript);
   }
 
-  // Map phase: summarize each chunk independently
+  // Map phase: cheap Haiku per chunk
   const chunks = chunkTranscript(transcript, TRANSCRIPT_CHUNK_CHARS);
   const chunkSummaries: SummaryResult[] = [];
 
   for (const chunk of chunks) {
     const summary = await callClaude(
       client,
-      SYSTEM_PROMPT,
-      `請摘要以下這段 Podcast 內容（這是整集的一個片段）：\n\n${chunk}`,
+      MODEL_FAST,
+      CHUNK_PROMPT,
+      `請摘要以下 Podcast 片段（這是整集的一部分）：\n\n${chunk}`,
     );
     chunkSummaries.push(summary);
   }
 
-  // Reduce phase: synthesize all chunk summaries
+  // Reduce phase: Sonnet synthesises into the final high-quality summary
   const combinedText = chunkSummaries
-    .map((s, i) => `## 段落 ${i + 1}\n${s.overview}`)
+    .map((s, i) => `## 片段 ${i + 1}\n${s.overview}`)
     .join('\n\n');
 
   const allKeyPoints = chunkSummaries.flatMap((s) => s.keyPoints);
@@ -153,14 +178,15 @@ export async function summarizeTranscript(transcript: string): Promise<SummaryRe
 
   const finalSummary = await callClaude(
     client,
+    MODEL_QUALITY,
     SYNTHESIS_PROMPT,
-    `請整合以下各段落摘要：\n\n${combinedText}\n\n所有重點：\n${allKeyPoints.join('\n')}\n\n所有金句：\n${allQuotes.join('\n')}\n\n所有標籤：${allTags.join('、')}`,
+    `請整合以下各片段摘要，生成完整的最終摘要：\n\n${combinedText}\n\n收集到的重點：\n${allKeyPoints.join('\n')}\n\n收集到的金句：\n${allQuotes.join('\n')}\n\n收集到的標籤：${allTags.join('、')}`,
   );
 
   return {
     overview: finalSummary.overview,
     keyPoints: finalSummary.keyPoints.length > 0 ? finalSummary.keyPoints : allKeyPoints.slice(0, 10),
-    quotes: finalSummary.quotes.length > 0 ? finalSummary.quotes : allQuotes.slice(0, 8),
-    tags: finalSummary.tags.length > 0 ? finalSummary.tags : allTags.slice(0, 10),
+    quotes: finalSummary.quotes.length > 0 ? finalSummary.quotes : allQuotes.slice(0, 6),
+    tags: finalSummary.tags.length > 0 ? finalSummary.tags : allTags.slice(0, 8),
   };
 }

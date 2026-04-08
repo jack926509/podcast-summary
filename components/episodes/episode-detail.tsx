@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle, Copy, Check, RefreshCw, Download } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle,
+  Copy, Check, RefreshCw, Download, BookOpen, Lightbulb, Sparkles,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -14,6 +16,33 @@ import type { EpisodeWithRelations } from '@/lib/types';
 
 interface EpisodeDetailProps {
   initialEpisode: EpisodeWithRelations;
+}
+
+/** Parse optional 【Category】 prefix from a keyPoint string */
+function parseKeyPoint(point: string): { category: string | null; text: string } {
+  const m = point.match(/^【(.+?)】(.+)$/);
+  if (m) return { category: m[1], text: m[2].trim() };
+  return { category: null, text: point };
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  '市場觀點': 'bg-blue-100 text-blue-700',
+  '投資策略': 'bg-violet-100 text-violet-700',
+  '數據': 'bg-orange-100 text-orange-700',
+  '趨勢': 'bg-teal-100 text-teal-700',
+  '風險提示': 'bg-red-100 text-red-700',
+  '概念解析': 'bg-yellow-100 text-yellow-700',
+  '產業動態': 'bg-green-100 text-green-700',
+  '操作建議': 'bg-pink-100 text-pink-700',
+};
+
+function CategoryBadge({ category }: { category: string }) {
+  const cls = CATEGORY_COLORS[category] ?? 'bg-muted text-muted-foreground';
+  return (
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${cls}`}>
+      {category}
+    </span>
+  );
 }
 
 export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
@@ -46,263 +75,256 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
   const quotes = parseJsonField<string[]>(summary?.quotes ?? null, []);
   const tags = parseJsonField<string[]>(summary?.tags ?? null, []);
-
   const isProcessing = (PROCESSING_STATUSES as string[]).includes(episode.status);
 
+  const exportMarkdown = useCallback(() => {
+    if (!summary) return;
+    const md = [
+      `# ${episode.title}`,
+      `> ${episode.podcast?.title ?? ''}${episode.publishedAt ? ` | ${new Date(episode.publishedAt).toLocaleDateString('zh-TW')}` : ''}`,
+      '',
+      '## 整體摘要',
+      summary.overview,
+      ...(keyPoints.length > 0
+        ? ['', '## 重點整理', ...keyPoints.map((p, i) => `${i + 1}. ${p}`)]
+        : []),
+      ...(quotes.length > 0
+        ? ['', '## 金句精選', ...quotes.map((q) => `> ${q}`)]
+        : []),
+      ...(tags.length > 0
+        ? ['', '## 標籤', tags.map((t) => `\`${t}\``).join(' ')]
+        : []),
+    ].join('\n');
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${episode.title.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [summary, episode, keyPoints, quotes, tags]);
+
+  const copyFull = useCallback(() => {
+    if (!summary) return;
+    const full = [
+      `【整體摘要】\n${summary.overview}`,
+      keyPoints.length > 0
+        ? `\n【重點整理】\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
+        : '',
+      quotes.length > 0
+        ? `\n【金句精選】\n${quotes.map((q) => `"${q}"`).join('\n')}`
+        : '',
+    ].filter(Boolean).join('\n');
+    handleCopy(full, 'full');
+  }, [summary, keyPoints, quotes, handleCopy]);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4">
+      {/* ── Header ─────────────────────────────────────────────── */}
       <div className="space-y-2">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="text-2xl font-bold leading-tight">{episode.title}</h1>
-          <StatusBadge status={episode.status} className="flex-shrink-0 mt-1" />
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold leading-tight">{episode.title}</h1>
+          <StatusBadge status={episode.status} className="flex-shrink-0 mt-0.5" />
         </div>
-        <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+        <div className="text-xs sm:text-sm text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
           <span>{episode.podcast?.title}</span>
           {episode.duration && <span>{formatDuration(episode.duration)}</span>}
           <span>建立於 {formatDateTime(episode.createdAt)}</span>
         </div>
       </div>
 
-      {/* Processing state */}
+      {/* ── Processing ─────────────────────────────────────────── */}
       {isProcessing && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="flex items-center gap-3 py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            <div>
-              <p className="text-sm font-medium text-primary">
-                {episode.status === EPISODE_STATUS.PENDING && '等待處理中...'}
-                {episode.status === EPISODE_STATUS.TRANSCRIBING && '正在進行語音轉錄，請稍候...'}
-                {episode.status === EPISODE_STATUS.SUMMARIZING && '正在生成 AI 摘要，請稍候...'}
-              </p>
-              {isPolling && (
-                <p className="text-xs text-primary/70 mt-0.5">每 3 秒自動更新狀態</p>
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-primary">
+              {episode.status === EPISODE_STATUS.PENDING && '等待處理中...'}
+              {episode.status === EPISODE_STATUS.TRANSCRIBING && '正在語音轉錄...'}
+              {episode.status === EPISODE_STATUS.SUMMARIZING && '正在生成 AI 摘要...'}
+            </p>
+            {isPolling && (
+              <p className="text-xs text-primary/70 mt-0.5">每 3 秒自動更新</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Error ──────────────────────────────────────────────── */}
+      {episode.status === EPISODE_STATUS.ERROR && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-destructive">處理失敗</p>
+              {episode.errorMsg && (
+                <p className="text-xs text-destructive/80 mt-1 break-all">{episode.errorMsg}</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRetry}
+            disabled={isRetrying}
+            className="mt-3 w-full border-destructive/30 hover:bg-destructive/10"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
+            {isRetrying ? '處理中...' : '重新處理'}
+          </Button>
+        </div>
       )}
 
-      {/* Error state */}
-      {episode.status === EPISODE_STATUS.ERROR && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="flex items-start justify-between gap-3 py-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-destructive">處理失敗</p>
-                {episode.errorMsg && (
-                  <p className="text-xs text-destructive/80 mt-0.5">{episode.errorMsg}</p>
-                )}
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-              disabled={isRetrying}
-              className="flex-shrink-0 border-destructive/30 hover:bg-destructive/10"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
-              {isRetrying ? '處理中...' : '重新處理'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Summary content */}
+      {/* ── Summary ────────────────────────────────────────────── */}
       {summary && (
         <>
           {/* Overview */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-base">整體摘要</CardTitle>
+          <section className="rounded-lg border bg-card">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                <BookOpen className="h-4 w-4 text-primary" />
+                整體摘要
+              </h2>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-7 w-7 p-0"
                 onClick={() => handleCopy(summary.overview, 'overview')}
               >
-                {copiedField === 'overview' ? (
-                  <Check className="h-4 w-4 text-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
+                {copiedField === 'overview' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
               </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            </div>
+            <div className="px-4 pb-4">
+              <p className="text-sm leading-7 whitespace-pre-wrap text-foreground/90">
                 {summary.overview}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           {/* Key Points */}
           {keyPoints.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">重點整理</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {keyPoints.map((point, i) => (
-                    <li key={i} className="flex gap-2 text-sm">
-                      <span className="flex-shrink-0 font-medium text-primary">
+            <section className="rounded-lg border bg-card">
+              <div className="px-4 pt-4 pb-2">
+                <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Lightbulb className="h-4 w-4 text-primary" />
+                  重點整理
+                </h2>
+              </div>
+              <ul className="px-4 pb-4 space-y-3">
+                {keyPoints.map((point, i) => {
+                  const { category, text } = parseKeyPoint(point);
+                  return (
+                    <li key={i} className="flex gap-2 items-start">
+                      <span className="flex-shrink-0 text-xs font-bold text-primary/60 mt-0.5 w-5 text-right">
                         {i + 1}.
                       </span>
-                      <span className="leading-relaxed">{point}</span>
+                      <div className="flex-1 min-w-0">
+                        {category && (
+                          <div className="mb-1">
+                            <CategoryBadge category={category} />
+                          </div>
+                        )}
+                        <p className="text-sm leading-relaxed">{text}</p>
+                      </div>
                     </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+                  );
+                })}
+              </ul>
+            </section>
           )}
 
           {/* Quotes */}
           {quotes.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Quote className="h-4 w-4" />
+            <section className="rounded-lg border bg-card">
+              <div className="px-4 pt-4 pb-2">
+                <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Quote className="h-4 w-4 text-primary" />
                   金句精選
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {quotes.map((quote, i) => (
-                    <blockquote
-                      key={i}
-                      className="border-l-4 border-primary pl-4 py-1"
-                    >
-                      <p className="text-sm italic leading-relaxed">{quote}</p>
-                    </blockquote>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                </h2>
+              </div>
+              <div className="px-4 pb-4 space-y-3">
+                {quotes.map((quote, i) => (
+                  <blockquote
+                    key={i}
+                    className="border-l-[3px] border-primary/40 pl-3 py-0.5"
+                  >
+                    <p className="text-sm leading-relaxed text-foreground/80 italic">{quote}</p>
+                  </blockquote>
+                ))}
+              </div>
+            </section>
           )}
 
           {/* Tags */}
           {tags.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Tag className="h-4 w-4 text-muted-foreground" />
-              {tags.map((tag) => (
-                <Badge key={tag} variant="secondary">
-                  {tag}
-                </Badge>
-              ))}
+            <div className="flex items-start gap-2 flex-wrap">
+              <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Action buttons: export + copy */}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const md = [
-                  `# ${episode.title}`,
-                  `> ${episode.podcast?.title ?? ''}${episode.publishedAt ? ` | ${new Date(episode.publishedAt).toLocaleDateString('zh-TW')}` : ''}`,
-                  '',
-                  '## 整體摘要',
-                  summary.overview,
-                  ...(keyPoints.length > 0
-                    ? ['', '## 重點整理', ...keyPoints.map((p, i) => `${i + 1}. ${p}`)]
-                    : []),
-                  ...(quotes.length > 0
-                    ? ['', '## 金句精選', ...quotes.map((q) => `> ${q}`)]
-                    : []),
-                  ...(tags.length > 0
-                    ? ['', '## 標籤', tags.map((t) => `\`${t}\``).join(' ')]
-                    : []),
-                ].join('\n');
-
-                const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${episode.title.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-')}.md`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-            >
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" size="sm" className="flex-1" onClick={copyFull}>
+              {copiedField === 'full' ? (
+                <><Check className="h-4 w-4 mr-2 text-green-600" />已複製！</>
+              ) : (
+                <><Copy className="h-4 w-4 mr-2" />複製全文摘要</>
+              )}
+            </Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={exportMarkdown}>
               <Download className="h-4 w-4 mr-2" />
               匯出 Markdown
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const full = [
-                  `【整體摘要】\n${summary.overview}`,
-                  keyPoints.length > 0
-                    ? `\n【重點整理】\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
-                    : '',
-                  quotes.length > 0
-                    ? `\n【金句精選】\n${quotes.map((q) => `"${q}"`).join('\n')}`
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join('\n');
-                handleCopy(full, 'full');
-              }}
-            >
-              {copiedField === 'full' ? (
-                <Check className="h-4 w-4 mr-2 text-success" />
-              ) : (
-                <Copy className="h-4 w-4 mr-2" />
-              )}
-              {copiedField === 'full' ? '已複製！' : '複製全文摘要'}
             </Button>
           </div>
         </>
       )}
 
-      {/* Transcript (collapsible) */}
+      {/* ── Transcript ─────────────────────────────────────────── */}
       {episode.transcript && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">完整逐字稿</CardTitle>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => handleCopy(episode.transcript!, 'transcript')}
-                >
-                  {copiedField === 'transcript' ? (
-                    <Check className="h-4 w-4 text-success" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTranscriptOpen((o) => !o)}
-                >
-                  {transcriptOpen ? (
-                    <>
-                      <ChevronUp className="h-4 w-4 mr-1" /> 收合
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-4 w-4 mr-1" /> 展開
-                    </>
-                  )}
-                </Button>
-              </div>
+        <section className="rounded-lg border bg-card">
+          <div className="flex items-center justify-between px-4 py-3">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              完整逐字稿
+            </h2>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => handleCopy(episode.transcript!, 'transcript')}
+              >
+                {copiedField === 'transcript' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setTranscriptOpen((o) => !o)}
+              >
+                {transcriptOpen ? (
+                  <><ChevronUp className="h-3.5 w-3.5 mr-1" />收合</>
+                ) : (
+                  <><ChevronDown className="h-3.5 w-3.5 mr-1" />展開</>
+                )}
+              </Button>
             </div>
-          </CardHeader>
+          </div>
           {transcriptOpen && (
-            <CardContent>
-              <pre className="text-sm leading-relaxed whitespace-pre-wrap font-sans max-h-96 overflow-y-auto rounded bg-muted/30 p-4">
+            <div className="px-4 pb-4">
+              <pre className="text-sm leading-7 whitespace-pre-wrap font-sans max-h-[60vh] overflow-y-auto rounded-md bg-muted/40 p-4">
                 {episode.transcript}
               </pre>
-            </CardContent>
+            </div>
           )}
-        </Card>
+        </section>
       )}
     </div>
   );

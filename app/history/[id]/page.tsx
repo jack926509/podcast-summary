@@ -30,7 +30,7 @@ export default async function EpisodeDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="px-4 py-4 sm:px-6 sm:py-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/history">

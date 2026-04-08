@@ -125,7 +125,7 @@ export default function SubscriptionsPage() {
   const unsubscribed = podcasts?.filter((p) => !p.subscribed) ?? [];
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-8">
+    <div className="px-4 py-4 sm:px-6 sm:py-6 max-w-3xl mx-auto space-y-6 sm:space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">我的訂閱</h1>
