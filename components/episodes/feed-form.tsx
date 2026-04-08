@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Rss, Loader2 } from 'lucide-react';
+import { Rss, Loader2, Bell, BellOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,9 +19,10 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [podcast, setPodcast] = useState<(FeedPodcastMeta & { id: string }) | null>(null);
+  const [podcast, setPodcast] = useState<(FeedPodcastMeta & { id: string; subscribed?: boolean }) | null>(null);
   const [episodes, setEpisodes] = useState<FeedEpisodeItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [subscribing, setSubscribing] = useState(false);
 
   const handleParse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +47,7 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
         return;
       }
 
-      setPodcast({ ...data.podcast, id: data.podcastId });
+      setPodcast({ ...data.podcast, id: data.podcastId, subscribed: data.subscribed ?? false });
       setEpisodes(data.episodes ?? []);
     } catch {
       setParseError('網路連線錯誤，請稍後再試');
@@ -69,6 +70,22 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
       setSelected(new Set());
     } else {
       setSelected(new Set(episodes.map((e) => e.guid)));
+    }
+  };
+
+  const toggleSubscribe = async () => {
+    if (!podcast) return;
+    setSubscribing(true);
+    try {
+      const next = !podcast.subscribed;
+      await fetch(`/api/podcasts/${podcast.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscribed: next }),
+      });
+      setPodcast((p) => p ? { ...p, subscribed: next } : p);
+    } finally {
+      setSubscribing(false);
     }
   };
 
@@ -146,7 +163,7 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
                 className="h-16 w-16 rounded-md object-cover flex-shrink-0"
               />
             )}
-            <div className="min-w-0">
+            <div className="flex-1 min-w-0">
               <p className="font-medium text-sm">{podcast.title}</p>
               {podcast.author && (
                 <p className="text-xs text-muted-foreground">{podcast.author}</p>
@@ -155,6 +172,20 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
                 找到 {episodes.length} 集
               </p>
             </div>
+            <Button
+              type="button"
+              variant={podcast.subscribed ? 'default' : 'outline'}
+              size="sm"
+              className="flex-shrink-0"
+              onClick={toggleSubscribe}
+              disabled={subscribing}
+            >
+              {podcast.subscribed ? (
+                <><BellOff className="h-4 w-4 mr-1" />已訂閱</>
+              ) : (
+                <><Bell className="h-4 w-4 mr-1" />訂閱</>
+              )}
+            </Button>
           </div>
 
           {/* Episode list */}

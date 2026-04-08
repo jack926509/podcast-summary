@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, PlusCircle, History, Mic, X } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, History, Mic, X, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/new', label: '新增任務', icon: PlusCircle },
+  { href: '/subscriptions', label: '我的訂閱', icon: Bell },
   { href: '/history', label: '歷史記錄', icon: History },
 ];
 

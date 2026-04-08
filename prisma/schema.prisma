@@ -9,14 +9,16 @@ datasource db {
 
 /// Podcast 節目（來自 RSS 或手動建立）
 model Podcast {
-  id          String    @id @default(cuid())
-  title       String
-  author      String?
-  feedUrl     String?   @unique
-  description String?
-  imageUrl    String?
-  createdAt   DateTime  @default(now())
-  episodes    Episode[]
+  id             String    @id @default(cuid())
+  title          String
+  author         String?
+  feedUrl        String?   @unique
+  description    String?
+  imageUrl       String?
+  subscribed     Boolean   @default(false)
+  lastCheckedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  episodes       Episode[]
 }
 
 /// 單集節目
