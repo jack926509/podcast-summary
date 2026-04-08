@@ -56,8 +56,9 @@ export function useEpisodePolling(initialEpisode: EpisodeWithRelations) {
         intervalRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [episode.id, shouldPoll]);
+    // episode.id and shouldPoll are the only values that should restart the interval.
+    // episode (object) is intentionally excluded to prevent restarting on every state update.
+  }, [episode.id, shouldPoll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { episode, isPolling };
 }

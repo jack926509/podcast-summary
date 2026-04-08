@@ -12,18 +12,37 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
     const status = searchParams.get('status') || undefined;
+    const search = searchParams.get('q')?.trim() || undefined;
+    const sortBy = searchParams.get('sortBy') ?? 'createdAt';
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const skip = (page - 1) * limit;
 
-    const where = status ? { status } : {};
+    const allowedSortFields = ['createdAt', 'title', 'status'] as const;
+    type SortField = (typeof allowedSortFields)[number];
+    const orderField: SortField = allowedSortFields.includes(sortBy as SortField)
+      ? (sortBy as SortField)
+      : 'createdAt';
+
+    const where = {
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' as const } },
+              { summary: { overview: { contains: search, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
 
     const [items, total] = await prisma.$transaction([
       prisma.episode.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [orderField]: sortOrder },
         select: {
           id: true,
           title: true,

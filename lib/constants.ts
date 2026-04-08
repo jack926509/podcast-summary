@@ -34,3 +34,9 @@ export const MAX_UPLOAD_BYTES = parseInt(
 
 /** 手動上傳集數的虛擬 Podcast 名稱 */
 export const MANUAL_PODCAST_TITLE = '手動上傳';
+
+/** 遠端音檔下載大小上限（bytes），預設 500MB */
+export const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
+
+/** Claude 摘要分段字元數上限（中文適用，超過此值啟用 map-reduce） */
+export const TRANSCRIPT_CHUNK_CHARS = 6000;

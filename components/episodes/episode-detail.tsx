@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle, Copy, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle, Copy, Check, RefreshCw, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useEpisodePolling } from '@/hooks/use-episode-polling';
+import { useToast } from '@/hooks/use-toast';
 import { parseJsonField, formatDateTime, formatDuration } from '@/lib/utils';
 import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
 import type { EpisodeWithRelations } from '@/lib/types';
@@ -17,14 +18,29 @@ interface EpisodeDetailProps {
 
 export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   const { episode, isPolling } = useEpisodePolling(initialEpisode);
+  const { toast } = useToast();
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleCopy = useCallback(async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   }, []);
+
+  const handleRetry = useCallback(async () => {
+    setIsRetrying(true);
+    try {
+      const res = await fetch(`/api/episodes/${episode.id}/retry`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: '已重新排入處理佇列', description: '請稍候，狀態將自動更新' });
+    } catch {
+      toast({ title: '重試失敗', description: '請稍後再試', variant: 'destructive' });
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [episode.id, toast]);
 
   const summary = episode.summary;
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
@@ -70,14 +86,26 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       {/* Error state */}
       {episode.status === EPISODE_STATUS.ERROR && (
         <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-destructive">處理失敗</p>
-              {episode.errorMsg && (
-                <p className="text-xs text-destructive/80 mt-0.5">{episode.errorMsg}</p>
-              )}
+          <CardContent className="flex items-start justify-between gap-3 py-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-destructive">處理失敗</p>
+                {episode.errorMsg && (
+                  <p className="text-xs text-destructive/80 mt-0.5">{episode.errorMsg}</p>
+                )}
+              </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="flex-shrink-0 border-destructive/30 hover:bg-destructive/10"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
+              {isRetrying ? '處理中...' : '重新處理'}
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -166,8 +194,41 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
             </div>
           )}
 
-          {/* Copy full summary */}
-          <div className="flex justify-end">
+          {/* Action buttons: export + copy */}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const md = [
+                  `# ${episode.title}`,
+                  `> ${episode.podcast?.title ?? ''}${episode.publishedAt ? ` | ${new Date(episode.publishedAt).toLocaleDateString('zh-TW')}` : ''}`,
+                  '',
+                  '## 整體摘要',
+                  summary.overview,
+                  ...(keyPoints.length > 0
+                    ? ['', '## 重點整理', ...keyPoints.map((p, i) => `${i + 1}. ${p}`)]
+                    : []),
+                  ...(quotes.length > 0
+                    ? ['', '## 金句精選', ...quotes.map((q) => `> ${q}`)]
+                    : []),
+                  ...(tags.length > 0
+                    ? ['', '## 標籤', tags.map((t) => `\`${t}\``).join(' ')]
+                    : []),
+                ].join('\n');
+
+                const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${episode.title.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              匯出 Markdown
+            </Button>
             <Button
               variant="outline"
               size="sm"

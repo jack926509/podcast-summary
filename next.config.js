@@ -2,6 +2,7 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: [
       'fluent-ffmpeg',
       '@ffmpeg-installer/ffmpeg',
@@ -14,7 +15,7 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: '*', // single-level wildcard; allows podcast CDN images
       },
     ],
   },
