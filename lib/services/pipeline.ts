@@ -75,6 +75,7 @@ export async function processEpisode(episodeId: string): Promise<void> {
       tmpFilePath = downloadedFile;
     }
 
+    if (!tmpFilePath) throw new Error('No audio file path to transcribe');
     const transcript = await transcribeAudio(tmpFilePath);
 
     await prisma.episode.update({
@@ -90,9 +91,9 @@ export async function processEpisode(episodeId: string): Promise<void> {
         data: {
           episodeId,
           overview: summaryResult.overview,
-          keyPoints: JSON.stringify(summaryResult.keyPoints),
-          quotes: JSON.stringify(summaryResult.quotes),
-          tags: JSON.stringify(summaryResult.tags),
+          keyPoints: summaryResult.keyPoints,
+          quotes: summaryResult.quotes,
+          tags: summaryResult.tags,
         },
       }),
       prisma.episode.update({

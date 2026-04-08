@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -51,9 +51,9 @@ model Summary {
   episode       Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   overview      String           // 整體摘要
-  keyPoints     String           // JSON array: 分段重點
-  quotes        String           // JSON array: 金句
-  tags          String?          // JSON array: 自動標籤
+  keyPoints     Json             // JSON array: 分段重點
+  quotes        Json             // JSON array: 金句
+  tags          Json?            // JSON array: 自動標籤
 
   createdAt     DateTime @default(now())
 }

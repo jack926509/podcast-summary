@@ -27,8 +27,8 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   }, []);
 
   const summary = episode.summary;
-  const keyPoints = parseJsonField<string[]>(summary?.keyPoints, []);
-  const quotes = parseJsonField<string[]>(summary?.quotes, []);
+  const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
+  const quotes = parseJsonField<string[]>(summary?.quotes ?? null, []);
   const tags = parseJsonField<string[]>(summary?.tags ?? null, []);
 
   const isProcessing = (PROCESSING_STATUSES as string[]).includes(episode.status);
