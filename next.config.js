@@ -2,7 +2,6 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    instrumentationHook: true,
     serverComponentsExternalPackages: [
       'fluent-ffmpeg',
       '@ffmpeg-installer/ffmpeg',
