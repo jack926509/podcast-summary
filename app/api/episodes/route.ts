@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { episodeIds: episodes.map((e) => e.id) },
+      { episodeIds: episodes.map((e: { id: string }) => e.id) },
       { status: 202 },
     );
   } catch (err) {

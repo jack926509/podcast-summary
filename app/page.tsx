@@ -17,7 +17,7 @@ async function getStats(): Promise<EpisodeStats> {
   });
 
   const countMap = Object.fromEntries(
-    counts.map((c) => [c.status, c._count.status]),
+    counts.map((c: { status: string; _count: { status: number } }) => [c.status, c._count.status]),
   );
 
   const processing = PROCESSING_STATUSES.reduce(

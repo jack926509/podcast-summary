@@ -1,7 +1,7 @@
 FROM node:20-slim
 
-# Install ffmpeg, openssl (required by Prisma), and ca-certificates for HTTPS API calls
-RUN apt-get update && apt-get install -y ffmpeg openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install ffmpeg, openssl (required by Prisma), ca-certificates for HTTPS API calls
+RUN apt-get update && apt-get install -y ffmpeg openssl ca-certificates libssl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

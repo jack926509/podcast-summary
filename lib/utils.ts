@@ -45,16 +45,19 @@ export function formatDateTime(date: Date | string): string {
 }
 
 /**
- * Safely parse a JSON string field (stored as string in SQLite).
- * Returns the fallback value if parsing fails.
+ * Safely cast a Prisma JsonValue field (PostgreSQL) to the expected type.
+ * Also handles legacy string-encoded JSON for compatibility.
  */
-export function parseJsonField<T>(json: string | null | undefined, fallback: T): T {
-  if (!json) return fallback;
-  try {
-    return JSON.parse(json) as T;
-  } catch {
-    return fallback;
+export function parseJsonField<T>(json: unknown, fallback: T): T {
+  if (json === null || json === undefined) return fallback;
+  if (typeof json === 'string') {
+    try {
+      return JSON.parse(json) as T;
+    } catch {
+      return fallback;
+    }
   }
+  return json as T;
 }
 
 /** Truncate text to maxLen characters, appending "..." */
