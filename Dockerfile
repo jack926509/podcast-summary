@@ -6,8 +6,7 @@ RUN apt-get update && apt-get install -y ffmpeg openssl ca-certificates libssl-d
 WORKDIR /app
 
 COPY package*.json ./
-COPY prisma ./prisma
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY . .
 RUN npx prisma generate
