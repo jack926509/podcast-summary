@@ -6,6 +6,7 @@ import { Rss, RefreshCw, Trash2, BellOff, Bell, PlusCircle } from 'lucide-react'
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { formatDuration } from '@/lib/utils';
 import type { FeedEpisodeItem } from '@/lib/types';
 
@@ -37,6 +38,7 @@ export default function SubscriptionsPage() {
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const toggleSubscribe = async (podcast: PodcastRow) => {
     await fetch(`/api/podcasts/${podcast.id}`, {
@@ -47,9 +49,10 @@ export default function SubscriptionsPage() {
     mutate();
   };
 
-  const deletePodcast = async (id: string) => {
-    if (!confirm('確定要移除此 Podcast 及所有集數記錄嗎？')) return;
-    await fetch(`/api/podcasts/${id}`, { method: 'DELETE' });
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    await fetch(`/api/podcasts/${deleteTarget}`, { method: 'DELETE' });
+    setDeleteTarget(null);
     mutate();
   };
 
@@ -167,7 +170,7 @@ export default function SubscriptionsPage() {
           onToggleEp={(guid) => toggleEp(podcast.id, guid)}
           onAddToQueue={() => addToQueue(podcast)}
           onToggleSubscribe={() => toggleSubscribe(podcast)}
-          onDelete={() => deletePodcast(podcast.id)}
+          onDelete={() => setDeleteTarget(podcast.id)}
         />
       ))}
 
@@ -200,13 +203,24 @@ export default function SubscriptionsPage() {
                 <Bell className="h-4 w-4 mr-1" />
                 訂閱
               </Button>
-              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deletePodcast(podcast.id)}>
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteTarget(podcast.id)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           ))}
         </div>
       )}
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="移除 Podcast"
+        description="確定要移除此 Podcast 及所有集數記錄嗎？此操作無法復原。"
+        confirmLabel="移除"
+        cancelLabel="取消"
+        onConfirm={confirmDelete}
+        variant="destructive"
+      />
     </div>
   );
 }
