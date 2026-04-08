@@ -94,7 +94,7 @@ async function callClaude(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
