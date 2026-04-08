@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { processEpisode } from '@/lib/services/pipeline';
+import { ensureStartup } from '@/lib/startup';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,7 @@ export const runtime = 'nodejs';
 // Query params: status?, page=1, limit=20
 
 export async function GET(req: NextRequest) {
+  await ensureStartup();
   try {
     const { searchParams } = req.nextUrl;
     const status = searchParams.get('status') || undefined;
