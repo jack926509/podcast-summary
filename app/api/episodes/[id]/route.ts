@@ -47,12 +47,8 @@ export async function DELETE(
     }
 
     // Clean up /tmp file if it was an uploaded file
-    if (episode.audioUrl?.startsWith('/tmp/') && fs.existsSync(episode.audioUrl)) {
-      try {
-        fs.unlinkSync(episode.audioUrl);
-      } catch {
-        // Ignore
-      }
+    if (episode.audioUrl?.startsWith('/tmp/')) {
+      await fs.promises.unlink(episode.audioUrl).catch(() => {});
     }
 
     // Prisma cascade will delete Summary automatically (onDelete: Cascade)

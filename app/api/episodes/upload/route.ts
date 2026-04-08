@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     // Write file to /tmp
     const buffer = await file.arrayBuffer();
-    fs.writeFileSync(tmpPath, Buffer.from(buffer));
+    await fs.promises.writeFile(tmpPath, Buffer.from(buffer));
 
     // Ensure a "Manual Uploads" podcast exists
     const podcast = await prisma.podcast.upsert({
@@ -74,12 +74,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ episodeId: episode.id }, { status: 202 });
   } catch (err) {
     // Clean up tmp file if Episode creation failed
-    if (tmpPath && fs.existsSync(tmpPath)) {
-      try {
-        fs.unlinkSync(tmpPath);
-      } catch {
-        // Ignore
-      }
+    if (tmpPath) {
+      await fs.promises.unlink(tmpPath).catch(() => {});
     }
     const msg = err instanceof Error ? err.message : '上傳失敗';
     return NextResponse.json({ error: msg }, { status: 500 });

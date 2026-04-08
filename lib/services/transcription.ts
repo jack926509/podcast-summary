@@ -33,13 +33,14 @@ function splitAudioIntoChunks(
       .output(outputPattern)
       .on('end', () => {
         // Collect all generated chunk files in order
-        const dir = fs.readdirSync(tmpDir);
-        const prefix = `chunk_${sessionId}_`;
-        const chunks = dir
-          .filter((f) => f.startsWith(prefix))
-          .sort()
-          .map((f) => path.join(tmpDir, f));
-        resolve(chunks);
+        fs.promises.readdir(tmpDir).then((dir) => {
+          const prefix = `chunk_${sessionId}_`;
+          const chunks = dir
+            .filter((f) => f.startsWith(prefix))
+            .sort() // safe: ffmpeg uses %03d zero-padding
+            .map((f) => path.join(tmpDir, f));
+          resolve(chunks);
+        }).catch(reject);
       })
       .on('error', (err) => {
         reject(new Error(`ffmpeg segmentation failed: ${err.message}`));
@@ -50,19 +51,34 @@ function splitAudioIntoChunks(
 
 /**
  * Transcribe a single audio file chunk using OpenAI Whisper API.
+ * Retries up to 3 times with exponential backoff on transient failures.
  */
-async function transcribeChunk(openai: OpenAI, chunkPath: string): Promise<string> {
-  const stream = fs.createReadStream(chunkPath);
-  const filename = path.basename(chunkPath);
+async function transcribeChunk(openai: OpenAI, chunkPath: string, retries = 3): Promise<string> {
+  let lastError: Error | null = null;
 
-  const response = await openai.audio.transcriptions.create({
-    file: await toFile(stream, filename),
-    model: 'whisper-1',
-    response_format: 'text',
-  });
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const stream = fs.createReadStream(chunkPath);
+      const filename = path.basename(chunkPath);
 
-  // response_format: 'text' returns a plain string
-  return response as unknown as string;
+      const response = await openai.audio.transcriptions.create({
+        file: await toFile(stream, filename),
+        model: 'whisper-1',
+        response_format: 'text',
+      });
+
+      // response_format: 'text' returns a plain string
+      return response as unknown as string;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < retries - 1) {
+        // Exponential backoff: 2s, 4s, 8s
+        await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt)));
+      }
+    }
+  }
+
+  throw new Error(`Whisper API failed after ${retries} attempts: ${lastError?.message}`);
 }
 
 /**
@@ -73,7 +89,7 @@ async function transcribeChunk(openai: OpenAI, chunkPath: string): Promise<strin
  */
 export async function transcribeAudio(filePath: string): Promise<string> {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const stats = fs.statSync(filePath);
+  const stats = await fs.promises.stat(filePath);
   const chunkPaths: string[] = [];
 
   try {
@@ -95,12 +111,6 @@ export async function transcribeAudio(filePath: string): Promise<string> {
     return transcripts.join('\n');
   } finally {
     // Clean up chunk files (the original file is cleaned up by the pipeline)
-    for (const chunk of chunkPaths) {
-      try {
-        fs.unlinkSync(chunk);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    await Promise.allSettled(chunkPaths.map((chunk) => fs.promises.unlink(chunk)));
   }
 }

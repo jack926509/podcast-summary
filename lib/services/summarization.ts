@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { SummaryResult } from '@/lib/types';
-import { TRANSCRIPT_CHUNK_WORDS } from '@/lib/constants';
+import { TRANSCRIPT_CHUNK_CHARS } from '@/lib/constants';
 
 const SYSTEM_PROMPT = `你是一位專業的 Podcast 內容摘要助理。請仔細分析提供的逐字稿，並以繁體中文回應。
 
@@ -31,13 +31,36 @@ const SYNTHESIS_PROMPT = `你是一位專業的內容整合助理。以下是一
   "tags": ["整合後的標籤"]
 }`;
 
-/** Split transcript into chunks by word count */
-function chunkTranscript(transcript: string, maxWords: number): string[] {
-  const words = transcript.split(/\s+/);
+/**
+ * Split transcript into chunks by character count.
+ * Tries to break at sentence boundaries (。！？\n) to avoid mid-sentence cuts.
+ * Works correctly for both Chinese and English transcripts.
+ */
+function chunkTranscript(transcript: string, maxChars: number): string[] {
   const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += maxWords) {
-    chunks.push(words.slice(i, i + maxWords).join(' '));
+  let start = 0;
+
+  while (start < transcript.length) {
+    const end = start + maxChars;
+    if (end >= transcript.length) {
+      chunks.push(transcript.slice(start));
+      break;
+    }
+
+    // Try to find a sentence boundary within the last 20% of the chunk
+    const searchFrom = start + Math.floor(maxChars * 0.8);
+    const segment = transcript.slice(searchFrom, end);
+    const boundaryMatch = segment.search(/[。！？\n]/);
+
+    const splitAt =
+      boundaryMatch >= 0
+        ? searchFrom + boundaryMatch + 1 // include the punctuation
+        : end;
+
+    chunks.push(transcript.slice(start, splitAt));
+    start = splitAt;
   }
+
   return chunks;
 }
 
@@ -95,19 +118,19 @@ async function callClaude(
 
 /**
  * Summarize a podcast transcript using Claude.
- * Uses map-reduce strategy for long transcripts (>6000 words).
+ * Uses map-reduce strategy for long transcripts (> TRANSCRIPT_CHUNK_CHARS * 2).
+ * Uses character count instead of word count to handle Chinese transcripts correctly.
  */
 export async function summarizeTranscript(transcript: string): Promise<SummaryResult> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const wordCount = transcript.split(/\s+/).length;
 
-  if (wordCount <= TRANSCRIPT_CHUNK_WORDS * 2) {
+  if (transcript.length <= TRANSCRIPT_CHUNK_CHARS * 2) {
     // Short enough for a single call
     return callClaude(client, SYSTEM_PROMPT, transcript);
   }
 
   // Map phase: summarize each chunk independently
-  const chunks = chunkTranscript(transcript, TRANSCRIPT_CHUNK_WORDS);
+  const chunks = chunkTranscript(transcript, TRANSCRIPT_CHUNK_CHARS);
   const chunkSummaries: SummaryResult[] = [];
 
   for (const chunk of chunks) {

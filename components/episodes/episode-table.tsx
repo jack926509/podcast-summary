@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -17,9 +17,11 @@ import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { formatRelativeTime, truncate } from '@/lib/utils';
-import { EPISODE_STATUS } from '@/lib/constants';
+import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
+import { useToast } from '@/hooks/use-toast';
 import type { PaginatedResponse, EpisodeWithRelations } from '@/lib/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
 
 const PAGE_SIZE = 20;
 
@@ -28,9 +30,22 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 export function EpisodeTable() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
   const status = searchParams.get('status') ?? 'all';
   const page = Number(searchParams.get('page') ?? '1');
+  const sortBy = searchParams.get('sortBy') ?? 'createdAt';
+  const sortOrder = searchParams.get('sortOrder') ?? 'desc';
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
+
+  // Debounce search input → update URL after 300ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateParams({ q: searchInput.trim() || null, page: null });
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
   const updateParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -41,16 +56,28 @@ export function EpisodeTable() {
     router.push(`?${params.toString()}`, { scroll: false });
   }, [router, searchParams]);
 
+  const q = searchParams.get('q') ?? '';
   const query = new URLSearchParams({
     page: String(page),
     limit: String(PAGE_SIZE),
+    sortBy,
+    sortOrder,
     ...(status !== 'all' ? { status } : {}),
+    ...(q ? { q } : {}),
   });
 
   const { data, mutate, isLoading } = useSWR<PaginatedResponse<EpisodeWithRelations>>(
     `/api/episodes?${query}`,
     fetcher,
-    { refreshInterval: 5000 },
+    {
+      // Only poll when there are episodes still being processed
+      refreshInterval: (current) => {
+        const hasProcessing = current?.items?.some((ep) =>
+          (PROCESSING_STATUSES as string[]).includes(ep.status),
+        );
+        return hasProcessing ? 5000 : 0;
+      },
+    },
   );
 
   const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
@@ -61,20 +88,49 @@ export function EpisodeTable() {
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    await fetch(`/api/episodes/${deleteTarget}`, { method: 'DELETE' });
-    mutate();
-    setDeleteTarget(null);
-  }, [deleteTarget, mutate]);
+    try {
+      const res = await fetch(`/api/episodes/${deleteTarget}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      mutate();
+    } catch {
+      toast({ title: '刪除失敗', description: '請稍後再試', variant: 'destructive' });
+    } finally {
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, mutate, toast]);
 
   const handleStatusChange = (val: string) => {
     updateParams({ status: val === 'all' ? null : val, page: null });
   };
 
+  const toggleSort = (field: string) => {
+    if (sortBy === field) {
+      updateParams({ sortOrder: sortOrder === 'desc' ? 'asc' : 'desc', page: null });
+    } else {
+      updateParams({ sortBy: field, sortOrder: 'desc', page: null });
+    }
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortBy !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortOrder === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
   return (
     <div className="space-y-4">
-      {/* Filter */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-medium">狀態篩選：</span>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="搜尋標題或摘要..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
         <Select value={status} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-36">
             <SelectValue />
@@ -100,10 +156,22 @@ export function EpisodeTable() {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
-              <th className="text-left px-4 py-3 font-medium">集數標題</th>
+              <th className="text-left px-4 py-3 font-medium">
+                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('title')}>
+                  集數標題 <SortIcon field="title" />
+                </button>
+              </th>
               <th className="text-left px-4 py-3 font-medium hidden md:table-cell">節目</th>
-              <th className="text-left px-4 py-3 font-medium">狀態</th>
-              <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">建立時間</th>
+              <th className="text-left px-4 py-3 font-medium">
+                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('status')}>
+                  狀態 <SortIcon field="status" />
+                </button>
+              </th>
+              <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">
+                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('createdAt')}>
+                  建立時間 <SortIcon field="createdAt" />
+                </button>
+              </th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
