@@ -141,42 +141,60 @@ export async function processEpisode(episodeId: string): Promise<void> {
   try {
     const episode = await prisma.episode.findUniqueOrThrow({
       where: { id: episodeId },
+      include: { summary: true },
     });
 
     // ── Step 1: Transcription ──────────────────────────────────────────────
-    await prisma.episode.update({
-      where: { id: episodeId },
-      data: { status: EPISODE_STATUS.TRANSCRIBING },
-    });
+    // Skip if transcript already exists (e.g. retrying after a summary failure)
+    let transcript = episode.transcript ?? '';
 
-    if (!episode.audioUrl) {
-      throw new Error('Episode has no audioUrl to process');
-    }
+    if (!transcript) {
+      await prisma.episode.update({
+        where: { id: episodeId },
+        data: { status: EPISODE_STATUS.TRANSCRIBING },
+      });
 
-    if (isLocalTmpPath(episode.audioUrl)) {
-      // Uploaded file — already on disk
-      tmpFilePath = episode.audioUrl;
+      if (!episode.audioUrl) {
+        throw new Error('Episode has no audioUrl to process');
+      }
+
+      if (isLocalTmpPath(episode.audioUrl)) {
+        tmpFilePath = episode.audioUrl;
+      } else {
+        downloadedFile = await downloadRemoteFile(episode.audioUrl, episodeId);
+        tmpFilePath = downloadedFile;
+      }
+
+      if (!tmpFilePath) throw new Error('No audio file path to transcribe');
+      transcript = await transcribeAudio(tmpFilePath);
+
+      await prisma.episode.update({
+        where: { id: episodeId },
+        data: { transcript, status: EPISODE_STATUS.SUMMARIZING },
+      });
     } else {
-      // RSS episode — download first
-      downloadedFile = await downloadRemoteFile(episode.audioUrl, episodeId);
-      tmpFilePath = downloadedFile;
+      // Transcript exists — jump straight to summarizing
+      await prisma.episode.update({
+        where: { id: episodeId },
+        data: { status: EPISODE_STATUS.SUMMARIZING },
+      });
     }
-
-    if (!tmpFilePath) throw new Error('No audio file path to transcribe');
-    const transcript = await transcribeAudio(tmpFilePath);
-
-    await prisma.episode.update({
-      where: { id: episodeId },
-      data: { transcript, status: EPISODE_STATUS.SUMMARIZING },
-    });
 
     // ── Step 2: Summarization ──────────────────────────────────────────────
     const summaryResult = await summarizeTranscript(transcript);
 
+    // Use upsert so retries don't fail when a summary already exists
     await prisma.$transaction([
-      prisma.summary.create({
-        data: {
+      prisma.summary.upsert({
+        where: { episodeId },
+        create: {
           episodeId,
+          overview: summaryResult.overview,
+          keyPoints: summaryResult.keyPoints,
+          quotes: summaryResult.quotes,
+          tags: summaryResult.tags,
+        },
+        update: {
           overview: summaryResult.overview,
           keyPoints: summaryResult.keyPoints,
           quotes: summaryResult.quotes,
@@ -185,7 +203,7 @@ export async function processEpisode(episodeId: string): Promise<void> {
       }),
       prisma.episode.update({
         where: { id: episodeId },
-        data: { status: EPISODE_STATUS.DONE },
+        data: { status: EPISODE_STATUS.DONE, errorMsg: null },
       }),
     ]);
   } catch (error) {
