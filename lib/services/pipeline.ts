@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { transcribeAudio } from './transcription';
 import { summarizeTranscript } from './summarization';
 import { EPISODE_STATUS, MAX_DOWNLOAD_BYTES } from '@/lib/constants';
+import { processingLimiter } from '@/lib/concurrency';
 
 // Private IP ranges that should not be accessible via SSRF
 const PRIVATE_IP_PATTERNS = [
@@ -135,6 +136,9 @@ function isLocalTmpPath(audioUrl: string): boolean {
  * The caller is responsible for returning the HTTP response before this runs.
  */
 export async function processEpisode(episodeId: string): Promise<void> {
+  // Acquire slot — queues if 2 episodes are already processing
+  await processingLimiter.acquire();
+
   let tmpFilePath: string | null = null;
   let downloadedFile: string | null = null;
 
@@ -216,6 +220,7 @@ export async function processEpisode(episodeId: string): Promise<void> {
       })
       .catch((e) => console.error('Failed to update error status:', e));
   } finally {
+    processingLimiter.release();
     // Clean up temp files
     const fileToDelete = downloadedFile ?? tmpFilePath;
     if (fileToDelete) {

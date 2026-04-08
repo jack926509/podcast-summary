@@ -49,32 +49,47 @@ function splitAudioIntoChunks(
   });
 }
 
+const WHISPER_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes per chunk
+
 /**
  * Transcribe a single audio file chunk using OpenAI Whisper API.
  * Retries up to 3 times with exponential backoff on transient failures.
+ * Each attempt is protected by a 10-minute AbortController timeout.
  */
 async function transcribeChunk(openai: OpenAI, chunkPath: string, retries = 3): Promise<string> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), WHISPER_TIMEOUT_MS);
+
     try {
       const stream = fs.createReadStream(chunkPath);
       const filename = path.basename(chunkPath);
 
-      const response = await openai.audio.transcriptions.create({
-        file: await toFile(stream, filename),
-        model: 'whisper-1',
-        response_format: 'text',
-      });
+      const response = await openai.audio.transcriptions.create(
+        {
+          file: await toFile(stream, filename),
+          model: 'whisper-1',
+          response_format: 'text',
+        },
+        { signal: controller.signal },
+      );
 
       // response_format: 'text' returns a plain string
       return response as unknown as string;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      // Don't retry on timeout — surface it immediately
+      if (lastError.name === 'AbortError' || controller.signal.aborted) {
+        throw new Error(`Whisper transcription timed out after ${WHISPER_TIMEOUT_MS / 60000} minutes`);
+      }
       if (attempt < retries - 1) {
         // Exponential backoff: 2s, 4s, 8s
         await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt)));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

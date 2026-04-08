@@ -1,44 +1,41 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Trash2, ChevronLeft, ChevronRight, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, ArrowUpDown, ArrowUp, ArrowDown, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { formatRelativeTime, truncate } from '@/lib/utils';
+import { formatRelativeTime, formatDuration, parseJsonField, truncate } from '@/lib/utils';
 import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedResponse, EpisodeWithRelations } from '@/lib/types';
-import { useState, useEffect } from 'react';
-import { Input } from '@/components/ui/input';
 
 const PAGE_SIZE = 20;
-
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function EpisodeTable() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+
   const status = searchParams.get('status') ?? 'all';
   const page = Number(searchParams.get('page') ?? '1');
   const sortBy = searchParams.get('sortBy') ?? 'createdAt';
   const sortOrder = searchParams.get('sortOrder') ?? 'desc';
+  const activeTag = searchParams.get('tag') ?? '';
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
 
-  // Debounce search input → update URL after 300ms
   useEffect(() => {
     const timer = setTimeout(() => {
       updateParams({ q: searchInput.trim() || null, page: null });
@@ -56,6 +53,12 @@ export function EpisodeTable() {
     router.push(`?${params.toString()}`, { scroll: false });
   }, [router, searchParams]);
 
+  const handleTagClick = useCallback((tag: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateParams({ tag: activeTag === tag ? null : tag, page: null });
+  }, [activeTag, updateParams]);
+
   const q = searchParams.get('q') ?? '';
   const query = new URLSearchParams({
     page: String(page),
@@ -64,13 +67,13 @@ export function EpisodeTable() {
     sortOrder,
     ...(status !== 'all' ? { status } : {}),
     ...(q ? { q } : {}),
+    ...(activeTag ? { tag: activeTag } : {}),
   });
 
   const { data, mutate, isLoading } = useSWR<PaginatedResponse<EpisodeWithRelations>>(
     `/api/episodes?${query}`,
     fetcher,
     {
-      // Only poll when there are episodes still being processed
       refreshInterval: (current) => {
         const hasProcessing = current?.items?.some((ep) =>
           (PROCESSING_STATUSES as string[]).includes(ep.status),
@@ -99,10 +102,6 @@ export function EpisodeTable() {
     }
   }, [deleteTarget, mutate, toast]);
 
-  const handleStatusChange = (val: string) => {
-    updateParams({ status: val === 'all' ? null : val, page: null });
-  };
-
   const toggleSort = (field: string) => {
     if (sortBy === field) {
       updateParams({ sortOrder: sortOrder === 'desc' ? 'asc' : 'desc', page: null });
@@ -120,19 +119,19 @@ export function EpisodeTable() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[180px] max-w-sm">
+      {/* ── Filters ─────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[160px] max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜尋標題或摘要..."
+            placeholder="搜尋標題、摘要、逐字稿..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="pl-8 h-9"
           />
         </div>
-        <Select value={status} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-36">
+        <Select value={status} onValueChange={(val) => updateParams({ status: val === 'all' ? null : val, page: null })}>
+          <SelectTrigger className="w-32 h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -145,123 +144,145 @@ export function EpisodeTable() {
           </SelectContent>
         </Select>
         {data && (
-          <span className="text-xs text-muted-foreground">
-            共 {data.total} 筆
-          </span>
+          <span className="text-xs text-muted-foreground ml-1">共 {data.total} 筆</span>
         )}
       </div>
 
-      {/* Table */}
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">
-                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('title')}>
-                  集數標題 <SortIcon field="title" />
-                </button>
-              </th>
-              <th className="text-left px-4 py-3 font-medium hidden md:table-cell">節目</th>
-              <th className="text-left px-4 py-3 font-medium">
-                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('status')}>
-                  狀態 <SortIcon field="status" />
-                </button>
-              </th>
-              <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">
-                <button className="flex items-center hover:text-foreground transition-colors" onClick={() => toggleSort('createdAt')}>
-                  建立時間 <SortIcon field="createdAt" />
-                </button>
-              </th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {/* Skeleton loading rows */}
-            {isLoading && Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i} className="border-b">
-                <td className="px-4 py-3">
-                  <Skeleton className="h-4 w-48" />
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  <Skeleton className="h-4 w-24" />
-                </td>
-                <td className="px-4 py-3">
-                  <Skeleton className="h-5 w-16 rounded-full" />
-                </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
-                  <Skeleton className="h-4 w-20" />
-                </td>
-                <td className="px-4 py-3 flex justify-end">
-                  <Skeleton className="h-8 w-8 rounded-md" />
-                </td>
-              </tr>
-            ))}
+      {/* Active tag filter pill */}
+      {activeTag && (
+        <div className="flex items-center gap-2">
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">標籤篩選：</span>
+          <button
+            onClick={() => updateParams({ tag: null, page: null })}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium hover:bg-primary/20 transition-colors"
+          >
+            {activeTag}
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
-            {!isLoading && (!data?.items || data.items.length === 0) && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                  {status !== 'all' ? '此狀態下無記錄' : '尚無記錄'}
-                </td>
-              </tr>
-            )}
-            {data?.items?.map((ep) => (
-              <tr key={ep.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/history/${ep.id}`}
-                    className="hover:underline font-medium"
-                  >
-                    {truncate(ep.title, 60)}
-                  </Link>
-                  {ep.status === EPISODE_STATUS.ERROR && ep.errorMsg && (
-                    <p className="text-xs text-destructive mt-0.5 truncate max-w-xs">
-                      {ep.errorMsg}
-                    </p>
-                  )}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
-                  {truncate(ep.podcast?.title ?? '—', 30)}
-                </td>
-                <td className="px-4 py-3">
+      {/* ── Sort bar ────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground border-b pb-2">
+        <span>排序：</span>
+        {(['createdAt', 'title', 'status'] as const).map((field) => {
+          const labels = { createdAt: '時間', title: '標題', status: '狀態' };
+          return (
+            <button
+              key={field}
+              onClick={() => toggleSort(field)}
+              className="flex items-center hover:text-foreground transition-colors"
+            >
+              {labels[field]} <SortIcon field={field} />
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Episode cards ───────────────────────────────────────── */}
+      <div className="space-y-2">
+        {isLoading && Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-lg border p-4 space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+
+        {!isLoading && (!data?.items || data.items.length === 0) && (
+          <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
+            {activeTag ? `沒有標籤為「${activeTag}」的集數` : status !== 'all' ? '此狀態下無記錄' : '尚無記錄'}
+          </div>
+        )}
+
+        {data?.items?.map((ep) => {
+          const tags = parseJsonField<string[]>(ep.summary?.tags ?? null, []);
+          const overview = ep.summary?.overview ?? '';
+          const isProcessing = (PROCESSING_STATUSES as string[]).includes(ep.status);
+
+          return (
+            <Link
+              key={ep.id}
+              href={`/history/${ep.id}`}
+              className="block rounded-lg border bg-card hover:bg-muted/40 transition-colors p-4 group"
+            >
+              {/* Row 1: title + status + delete */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm leading-snug group-hover:underline truncate">
+                    {ep.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {ep.podcast?.title ?? '—'}
+                    {ep.duration ? ` · ${formatDuration(ep.duration)}` : ''}
+                    {' · '}{formatRelativeTime(ep.createdAt)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <StatusBadge status={ep.status} />
-                </td>
-                <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                  {formatRelativeTime(ep.createdAt)}
-                </td>
-                <td className="px-4 py-3 text-right">
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
                     onClick={(e) => handleDelete(ep.id, e)}
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+
+              {/* Row 2: error message */}
+              {ep.status === EPISODE_STATUS.ERROR && ep.errorMsg && (
+                <p className="text-xs text-destructive mt-1.5 line-clamp-1">{ep.errorMsg}</p>
+              )}
+
+              {/* Row 3: summary preview */}
+              {overview && !isProcessing && (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
+                  {overview}
+                </p>
+              )}
+
+              {/* Row 4: tags */}
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {tags.slice(0, 5).map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={(e) => handleTagClick(tag, e)}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                        activeTag === tag
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Pagination */}
+      {/* ── Pagination ──────────────────────────────────────────── */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-muted-foreground">
             第 {page} / {data.totalPages} 頁
           </p>
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              size="sm"
+              variant="outline" size="sm"
               onClick={() => updateParams({ page: String(Math.max(1, page - 1)) })}
               disabled={page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="outline" size="sm"
               onClick={() => updateParams({ page: String(Math.min(data.totalPages, page + 1)) })}
               disabled={page === data.totalPages}
             >
@@ -271,7 +292,6 @@ export function EpisodeTable() {
         </div>
       )}
 
-      {/* Delete confirmation dialog */}
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
