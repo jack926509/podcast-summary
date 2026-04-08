@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { processEpisode } from '@/lib/services/pipeline';
 import { EPISODE_STATUS } from '@/lib/constants';
 
+export const runtime = 'nodejs';
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

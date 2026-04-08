@@ -3,6 +3,8 @@ import Parser from 'rss-parser';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { parseDuration } from '@/lib/utils';
+
+export const runtime = 'nodejs';
 import type { FeedParseResult } from '@/lib/types';
 
 const parser = new Parser({
