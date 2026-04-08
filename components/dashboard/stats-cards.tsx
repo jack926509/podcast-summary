@@ -13,14 +13,14 @@ export function StatsCards({ stats }: StatsCardsProps) {
       value: stats.total,
       icon: Mic,
       description: '所有已建立的集數',
-      color: 'text-blue-600',
+      color: 'text-primary',
     },
     {
       title: '處理中',
       value: stats.processing,
       icon: Loader2,
       description: '等待 / 轉錄 / 摘要中',
-      color: 'text-yellow-600',
+      color: 'text-warning',
       spin: true,
     },
     {
@@ -28,14 +28,14 @@ export function StatsCards({ stats }: StatsCardsProps) {
       value: stats.done,
       icon: CheckCircle2,
       description: '成功產生摘要',
-      color: 'text-green-600',
+      color: 'text-success',
     },
     {
       title: '錯誤',
       value: stats.error,
       icon: XCircle,
       description: '處理失敗的集數',
-      color: 'text-red-600',
+      color: 'text-destructive',
     },
   ];
 

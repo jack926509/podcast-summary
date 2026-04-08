@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { EpisodeTable } from '@/components/episodes/episode-table';
 
 export default function HistoryPage() {
@@ -9,7 +10,9 @@ export default function HistoryPage() {
           所有已處理或處理中的 Podcast 集數。
         </p>
       </div>
-      <EpisodeTable />
+      <Suspense>
+        <EpisodeTable />
+      </Suspense>
     </div>
   );
 }

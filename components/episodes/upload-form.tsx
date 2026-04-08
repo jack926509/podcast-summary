@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { MAX_UPLOAD_BYTES } from '@/lib/constants';
 
 interface UploadFormProps {
   onSuccess: (episodeId: string) => void;
 }
 
 export function UploadForm({ onSuccess }: UploadFormProps) {
+  const maxMB = Math.round(MAX_UPLOAD_BYTES / 1024 / 1024);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -23,6 +25,10 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
   const handleFile = useCallback((f: File) => {
     if (!f.type.startsWith('audio/')) {
       setError('請選擇音訊檔案 (mp3, wav, m4a 等)');
+      return;
+    }
+    if (f.size > MAX_UPLOAD_BYTES) {
+      setError(`檔案大小超過上限（${maxMB} MB），請選擇較小的檔案`);
       return;
     }
     setFile(f);
@@ -133,7 +139,7 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
           <div className="flex flex-col items-center gap-2">
             <Upload className="h-10 w-10 text-muted-foreground" />
             <p className="text-sm font-medium">拖放音檔或點擊選擇</p>
-            <p className="text-xs text-muted-foreground">支援 MP3、WAV、M4A 等格式</p>
+            <p className="text-xs text-muted-foreground">支援 MP3、WAV、M4A 等格式・最大 {maxMB} MB</p>
           </div>
         )}
       </div>

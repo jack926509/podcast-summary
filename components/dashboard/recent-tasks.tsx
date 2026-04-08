@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { formatRelativeTime, truncate } from '@/lib/utils';
 import type { EpisodeWithPodcast } from '@/lib/types';
@@ -13,8 +14,13 @@ export function RecentTasks({ episodes }: RecentTasksProps) {
   if (episodes.length === 0) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">最近任務</CardTitle>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/history" className="text-xs text-muted-foreground">
+              查看全部 <ChevronRight className="h-3 w-3 ml-1 inline" />
+            </Link>
+          </Button>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground text-center py-8">
@@ -27,8 +33,13 @@ export function RecentTasks({ episodes }: RecentTasksProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">最近任務</CardTitle>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/history" className="text-xs text-muted-foreground">
+            查看全部 <ChevronRight className="h-3 w-3 ml-1 inline" />
+          </Link>
+        </Button>
       </CardHeader>
       <CardContent className="p-0">
         <ul className="divide-y">
@@ -52,6 +63,16 @@ export function RecentTasks({ episodes }: RecentTasksProps) {
             </li>
           ))}
         </ul>
+        {episodes.length >= 5 && (
+          <div className="px-6 py-3 border-t">
+            <Link
+              href="/history"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              前往歷史記錄查看全部 →
+            </Link>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
