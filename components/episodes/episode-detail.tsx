@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle,
   Copy, Check, RefreshCw, Download, BookOpen, Lightbulb, Sparkles,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useEpisodePolling } from '@/hooks/use-episode-polling';
@@ -26,14 +26,14 @@ function parseKeyPoint(point: string): { category: string | null; text: string }
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  '市場觀點': 'bg-blue-100 text-blue-700',
-  '投資策略': 'bg-violet-100 text-violet-700',
-  '數據': 'bg-orange-100 text-orange-700',
-  '趨勢': 'bg-teal-100 text-teal-700',
-  '風險提示': 'bg-red-100 text-red-700',
-  '概念解析': 'bg-yellow-100 text-yellow-700',
-  '產業動態': 'bg-green-100 text-green-700',
-  '操作建議': 'bg-pink-100 text-pink-700',
+  '市場觀點': 'bg-primary/10 text-primary',
+  '投資策略': 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  '數據':     'bg-warning/10 text-warning',
+  '趨勢':     'bg-success/10 text-success',
+  '風險提示': 'bg-destructive/10 text-destructive',
+  '概念解析': 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+  '產業動態': 'bg-success/10 text-success',
+  '操作建議': 'bg-pink-500/10 text-pink-600 dark:text-pink-400',
 };
 
 function CategoryBadge({ category }: { category: string }) {
@@ -48,6 +48,7 @@ function CategoryBadge({ category }: { category: string }) {
 export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   const { episode, isPolling } = useEpisodePolling(initialEpisode);
   const { toast } = useToast();
+  const router = useRouter();
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -261,9 +262,13 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
               <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
+                  <button
+                    key={tag}
+                    onClick={() => router.push(`/history?tag=${encodeURIComponent(tag)}`)}
+                    className="inline-flex items-center rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
                     {tag}
-                  </Badge>
+                  </button>
                 ))}
               </div>
             </div>
