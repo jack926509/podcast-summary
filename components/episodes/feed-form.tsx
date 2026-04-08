@@ -112,12 +112,12 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
     <div className="space-y-4">
       {/* URL input */}
       <form onSubmit={handleParse} className="space-y-2">
-        <Label htmlFor="feed-url">RSS Feed 網址</Label>
+        <Label htmlFor="feed-url">RSS Feed 網址 或 Apple Podcasts 連結</Label>
         <div className="flex gap-2">
           <Input
             id="feed-url"
             type="url"
-            placeholder="https://example.com/podcast/feed.xml"
+            placeholder="https://podcasts.apple.com/... 或 RSS Feed URL"
             value={feedUrl}
             onChange={(e) => setFeedUrl(e.target.value)}
             disabled={isParsing}
