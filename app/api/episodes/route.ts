@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const status = searchParams.get('status') || undefined;
     const search = searchParams.get('q')?.trim() || undefined;
+    const tag = searchParams.get('tag')?.trim() || undefined;
     const sortBy = searchParams.get('sortBy') ?? 'createdAt';
     const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -29,13 +30,20 @@ export async function GET(req: NextRequest) {
 
     const where = {
       ...(status ? { status } : {}),
+      // Full-text search across title, overview, and transcript
       ...(search
         ? {
             OR: [
               { title: { contains: search, mode: 'insensitive' as const } },
+              { transcript: { contains: search, mode: 'insensitive' as const } },
               { summary: { overview: { contains: search, mode: 'insensitive' as const } } },
+              { summary: { keyPoints: { string_contains: search } } },
             ],
           }
+        : {}),
+      // Tag filter — check if tags JSON array contains the tag string
+      ...(tag
+        ? { summary: { tags: { string_contains: tag } } }
         : {}),
     };
 
