@@ -187,13 +187,20 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   }, [episode.id, toast]);
 
   const summary = episode.summary;
+  // Prisma includes all DB columns in the summary object — cast once for new fields
+  const summaryAny = summary as (typeof summary) & {
+    sentiment?: string | null;
+    sentimentNote?: string | null;
+    qa?: unknown;
+    watchlist?: unknown;
+  };
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
   const quotes = parseJsonField<string[]>(summary?.quotes ?? null, []);
   const tags = parseJsonField<string[]>(summary?.tags ?? null, []);
-  const qa = parseJsonField<QAItem[]>((summary as unknown as Record<string, unknown>)?.qa ?? null, []);
-  const watchlist = parseJsonField<WatchlistItem[]>((summary as unknown as Record<string, unknown>)?.watchlist ?? null, []);
-  const sentiment = (summary as unknown as Record<string, unknown>)?.sentiment as string | null ?? null;
-  const sentimentNote = (summary as unknown as Record<string, unknown>)?.sentimentNote as string | null ?? null;
+  const qa = parseJsonField<QAItem[]>(summaryAny?.qa ?? null, []);
+  const watchlist = parseJsonField<WatchlistItem[]>(summaryAny?.watchlist ?? null, []);
+  const sentiment = summaryAny?.sentiment ?? null;
+  const sentimentNote = summaryAny?.sentimentNote ?? null;
   const isProcessing = (PROCESSING_STATUSES as string[]).includes(episode.status);
 
   const exportMarkdown = useCallback(() => {

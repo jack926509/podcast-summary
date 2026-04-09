@@ -45,6 +45,8 @@ model Episode {
 
   @@index([podcastId])
   @@index([status])
+  @@index([createdAt])
+  @@index([publishedAt])
 }
 
 /// AI 摘要結果

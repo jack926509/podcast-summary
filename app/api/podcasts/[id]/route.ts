@@ -18,6 +18,11 @@ export async function PATCH(
     const body = await req.json();
     const { subscribed } = PatchSchema.parse(body);
 
+    const existing = await prisma.podcast.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: '找不到此 Podcast' }, { status: 404 });
+    }
+
     const podcast = await prisma.podcast.update({
       where: { id },
       data: { subscribed },
@@ -39,6 +44,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    const existing = await prisma.podcast.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: '找不到此 Podcast' }, { status: 404 });
+    }
+
     await prisma.podcast.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });
   } catch (err) {

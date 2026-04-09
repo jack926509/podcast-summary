@@ -131,7 +131,12 @@ function extractJson(text: string): SummaryResult {
   const stripped = text.replace(/```(?:json)?\n?/g, '').trim();
   const match = stripped.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No JSON object found in Claude response');
-  const parsed = JSON.parse(match[0]);
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch (e) {
+    throw new Error(`Failed to parse Claude JSON: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   const qa: QAItem[] = Array.isArray(parsed.qa)
     ? parsed.qa

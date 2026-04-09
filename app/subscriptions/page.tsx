@@ -412,7 +412,7 @@ function MobilePodcastTile({
                       type="checkbox"
                       checked={selectedGuids.has(ep.guid)}
                       onChange={() => onToggleEp(ep.guid)}
-                      className="h-3.5 w-3.5 rounded border-gray-300"
+                      className="h-3.5 w-3.5 rounded border-border"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs truncate">{ep.title}</p>
@@ -520,7 +520,7 @@ function PodcastCard({
                   type="checkbox"
                   checked={selectedGuids.has(ep.guid)}
                   onChange={() => onToggleEp(ep.guid)}
-                  className="h-4 w-4 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-border"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{ep.title}</p>

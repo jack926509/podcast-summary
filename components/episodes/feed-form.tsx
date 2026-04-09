@@ -235,7 +235,7 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
                       type="checkbox"
                       checked={selected.has(ep.guid)}
                       onChange={() => toggleSelect(ep.guid)}
-                      className="h-4 w-4 rounded border-gray-300"
+                      className="h-4 w-4 rounded border-border"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm truncate">{ep.title}</p>
