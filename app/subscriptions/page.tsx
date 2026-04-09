@@ -2,11 +2,12 @@
 
 import { useState, useCallback } from 'react';
 import useSWR from 'swr';
-import { Rss, RefreshCw, Trash2, BellOff, Bell, PlusCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Rss, RefreshCw, Trash2, BellOff, Bell, PlusCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog } from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 import { formatDuration } from '@/lib/utils';
 import type { FeedEpisodeItem } from '@/lib/types';
 
@@ -48,11 +49,13 @@ function PodcastCover({ imageUrl, title, size = 'md' }: { imageUrl: string | nul
 
 export default function SubscriptionsPage() {
   const { data: podcasts, mutate } = useSWR<PodcastRow[]>('/api/podcasts', fetcher);
+  const { toast } = useToast();
 
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [newEps, setNewEps] = useState<Record<string, FeedEpisodeItem[]>>({});
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  const [subscribing, setSubscribing] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   // Mobile: which podcast card is expanded
@@ -60,12 +63,33 @@ export default function SubscriptionsPage() {
 
   const toggleSubscribe = async (podcast: PodcastRow) => {
     const next = !podcast.subscribed;
-    const res = await fetch(`/api/podcasts/${podcast.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscribed: next }),
-    });
-    if (res.ok) mutate();
+    setSubscribing((s) => ({ ...s, [podcast.id]: true }));
+    try {
+      const res = await fetch(`/api/podcasts/${podcast.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscribed: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? '操作失敗');
+      }
+      mutate();
+      toast({
+        title: next ? '訂閱成功' : '已取消訂閱',
+        description: next
+          ? `已將「${podcast.title}」加入我的訂閱`
+          : `已從我的訂閱移除「${podcast.title}」`,
+      });
+    } catch (err) {
+      toast({
+        title: next ? '訂閱失敗' : '取消訂閱失敗',
+        description: err instanceof Error ? err.message : '請稍後再試',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubscribing((s) => ({ ...s, [podcast.id]: false }));
+    }
   };
 
   const confirmDelete = async () => {
@@ -170,6 +194,7 @@ export default function SubscriptionsPage() {
                   podcast={podcast}
                   expanded={expandedId === podcast.id}
                   refreshing={refreshing[podcast.id] ?? false}
+                  subscribing={subscribing[podcast.id] ?? false}
                   submitting={submitting[podcast.id] ?? false}
                   error={errors[podcast.id] ?? ''}
                   newEpisodes={newEps[podcast.id] ?? []}
@@ -222,9 +247,16 @@ export default function SubscriptionsPage() {
                   {podcast.author ?? ''}{podcast.author && ' · '}{podcast._count.episodes} 集已記錄
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => toggleSubscribe(podcast)}>
-                <Bell className="h-4 w-4 mr-1" />
-                訂閱
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => toggleSubscribe(podcast)}
+                disabled={subscribing[podcast.id]}
+              >
+                {subscribing[podcast.id]
+                  ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  : <Bell className="h-4 w-4 mr-1" />}
+                {subscribing[podcast.id] ? '訂閱中...' : '訂閱'}
               </Button>
               <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteTarget(podcast.id)}>
                 <Trash2 className="h-4 w-4" />
@@ -254,6 +286,7 @@ interface MobileTileProps {
   podcast: PodcastRow;
   expanded: boolean;
   refreshing: boolean;
+  subscribing: boolean;
   submitting: boolean;
   error: string;
   newEpisodes: FeedEpisodeItem[];
@@ -267,7 +300,7 @@ interface MobileTileProps {
 }
 
 function MobilePodcastTile({
-  podcast, expanded, refreshing, submitting, error,
+  podcast, expanded, refreshing, subscribing, submitting, error,
   newEpisodes, selectedGuids,
   onToggleExpand, onRefresh, onToggleEp, onAddToQueue, onUnsubscribe, onDelete,
 }: MobileTileProps) {
@@ -331,9 +364,12 @@ function MobilePodcastTile({
               size="sm"
               className="h-8 w-8 p-0"
               onClick={onUnsubscribe}
+              disabled={subscribing}
               title="取消訂閱"
             >
-              <BellOff className="h-3.5 w-3.5 text-muted-foreground" />
+              {subscribing
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
             </Button>
             <Button
               variant="outline"
