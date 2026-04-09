@@ -11,10 +11,10 @@ const PatchSchema = z.object({
 // PATCH /api/podcasts/[id] — toggle subscription
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
     const { subscribed } = PatchSchema.parse(body);
 
@@ -35,10 +35,10 @@ export async function PATCH(
 // DELETE /api/podcasts/[id] — remove podcast and all its episodes
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     await prisma.podcast.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });
   } catch (err) {
