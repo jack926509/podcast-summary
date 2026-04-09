@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const skip = (page - 1) * limit;
 
-    const allowedSortFields = ['createdAt', 'title', 'status'] as const;
+    const allowedSortFields = ['createdAt', 'publishedAt', 'title', 'status'] as const;
     type SortField = (typeof allowedSortFields)[number];
     const orderField: SortField = allowedSortFields.includes(sortBy as SortField)
       ? (sortBy as SortField)
@@ -107,8 +107,11 @@ export async function GET(req: NextRequest) {
 // ── POST /api/episodes ────────────────────────────────────────────────────────
 // Batch create episodes from RSS selection
 
+const SummaryModeSchema = z.enum(['brief', 'standard', 'deep']).default('standard');
+
 const BatchCreateSchema = z.object({
   podcastId: z.string().min(1),
+  summaryMode: SummaryModeSchema.optional(),
   items: z
     .array(
       z.object({
@@ -125,7 +128,7 @@ const BatchCreateSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { podcastId, items } = BatchCreateSchema.parse(body);
+    const { podcastId, items, summaryMode = 'standard' } = BatchCreateSchema.parse(body);
 
     // Verify podcast exists
     const podcast = await prisma.podcast.findUnique({ where: { id: podcastId } });
@@ -144,6 +147,7 @@ export async function POST(req: NextRequest) {
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
             duration: item.duration ?? null,
             status: 'pending',
+            summaryMode,
           },
         }),
       ),

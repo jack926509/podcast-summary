@@ -35,6 +35,7 @@ model Episode {
   // 處理狀態: pending | transcribing | summarizing | done | error
   status      String   @default("pending")
   errorMsg    String?
+  summaryMode String   @default("standard") // brief | standard | deep
 
   transcript  String?          // Whisper 逐字稿（長文本）
   summary     Summary?

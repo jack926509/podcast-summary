@@ -66,6 +66,37 @@ export function truncate(text: string, maxLen: number): string {
   return text.slice(0, maxLen) + '...';
 }
 
+/**
+ * Split text into segments, tagging stock tickers for highlighting.
+ * Matches:
+ *   - US tickers:  $NVDA, $AAPL  ($ prefix, 1-5 uppercase letters)
+ *   - TW 4-digit:  （2330）or 2330（ or standalone 4-digit stock codes
+ */
+export interface TextSegment {
+  text: string;
+  isTicker: boolean;
+}
+
+export function parseTickerSegments(text: string): TextSegment[] {
+  // Match $US_TICKER or standalone 4-digit TW code (with word boundary)
+  const TICKER_RE = /(\$[A-Z]{1,5}\b|\b\d{4}(?=（|\s|$|\W))/g;
+  const segments: TextSegment[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = TICKER_RE.exec(text)) !== null) {
+    if (match.index > last) {
+      segments.push({ text: text.slice(last, match.index), isTicker: false });
+    }
+    segments.push({ text: match[0], isTicker: true });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) {
+    segments.push({ text: text.slice(last), isTicker: false });
+  }
+  return segments;
+}
+
 /** Parse RSS itunes duration string ("1:23:45" or "83:45" or "300") to seconds */
 export function parseDuration(duration: string | undefined | null): number | null {
   if (!duration) return null;

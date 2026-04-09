@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useEpisodePolling } from '@/hooks/use-episode-polling';
 import { useToast } from '@/hooks/use-toast';
-import { parseJsonField, formatDateTime, formatDuration } from '@/lib/utils';
+import { parseJsonField, formatDateTime, formatDuration, parseTickerSegments } from '@/lib/utils';
 import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
 import type { EpisodeWithRelations } from '@/lib/types';
 
@@ -41,6 +41,31 @@ function CategoryBadge({ category }: { category: string }) {
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${cls}`}>
       {category}
+    </span>
+  );
+}
+
+/** Render text with stock tickers highlighted */
+function TickerText({ text, className }: { text: string; className?: string }) {
+  const segments = parseTickerSegments(text);
+  if (segments.length === 1 && !segments[0].isTicker) {
+    return <span className={className}>{text}</span>;
+  }
+  return (
+    <span className={className}>
+      {segments.map((seg, i) =>
+        seg.isTicker ? (
+          <mark
+            key={i}
+            className="bg-warning/20 text-warning-foreground font-semibold rounded px-0.5 not-italic"
+            style={{ fontStyle: 'normal' }}
+          >
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        ),
+      )}
     </span>
   );
 }
@@ -196,9 +221,10 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
               </Button>
             </div>
             <div className="px-4 pb-4">
-              <p className="text-sm leading-7 whitespace-pre-wrap text-foreground/90">
-                {summary.overview}
-              </p>
+              <TickerText
+                text={summary.overview}
+                className="text-sm leading-7 whitespace-pre-wrap text-foreground/90"
+              />
             </div>
           </section>
 
@@ -225,7 +251,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
                             <CategoryBadge category={category} />
                           </div>
                         )}
-                        <p className="text-sm leading-relaxed">{text}</p>
+                        <TickerText text={text} className="text-sm leading-relaxed" />
                       </div>
                     </li>
                   );

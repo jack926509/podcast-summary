@@ -26,6 +26,7 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
   const [episodes, setEpisodes] = useState<FeedEpisodeItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [subscribing, setSubscribing] = useState(false);
+  const [summaryMode, setSummaryMode] = useState<'brief' | 'standard' | 'deep'>('standard');
 
   const handleParse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +131,7 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
       const res = await fetch('/api/episodes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ podcastId: podcast.id, items }),
+        body: JSON.stringify({ podcastId: podcast.id, items, summaryMode }),
       });
       const data = await res.json();
 
@@ -249,6 +250,32 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
               </div>
             </div>
           )}
+
+          {/* Summary mode selector */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">摘要深度</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { value: 'brief', label: '快速', desc: '3 重點 · 省成本' },
+                { value: 'standard', label: '標準', desc: '6-10 重點' },
+                { value: 'deep', label: '深度', desc: '10-15 重點' },
+              ] as const).map(({ value, label, desc }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSummaryMode(value)}
+                  className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                    summaryMode === value
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border hover:border-primary/50'
+                  }`}
+                >
+                  <p className="text-xs font-medium">{label}</p>
+                  <p className="text-[10px] text-muted-foreground">{desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {submitError && (
             <p className="text-sm text-destructive">{submitError}</p>
