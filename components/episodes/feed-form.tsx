@@ -5,6 +5,7 @@ import { Rss, Loader2, Bell, BellOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 import { formatDuration } from '@/lib/utils';
 import type { FeedEpisodeItem, FeedPodcastMeta } from '@/lib/types';
 
@@ -13,6 +14,7 @@ interface FeedFormProps {
 }
 
 export function FeedForm({ onSuccess }: FeedFormProps) {
+  const { toast } = useToast();
   const [feedUrl, setFeedUrl] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,14 +78,31 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
   const toggleSubscribe = async () => {
     if (!podcast) return;
     setSubscribing(true);
+    const next = !podcast.subscribed;
     try {
-      const next = !podcast.subscribed;
-      await fetch(`/api/podcasts/${podcast.id}`, {
+      const res = await fetch(`/api/podcasts/${podcast.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscribed: next }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: next ? '訂閱失敗' : '取消訂閱失敗',
+          description: (data as { error?: string }).error ?? '請稍後再試',
+          variant: 'destructive',
+        });
+        return;
+      }
       setPodcast((p) => p ? { ...p, subscribed: next } : p);
+      toast({
+        title: next ? '訂閱成功' : '已取消訂閱',
+        description: next
+          ? `已將「${podcast.title}」加入我的訂閱`
+          : `已從我的訂閱移除「${podcast.title}」`,
+      });
+    } catch {
+      toast({ title: '網路連線錯誤', description: '請稍後再試', variant: 'destructive' });
     } finally {
       setSubscribing(false);
     }

@@ -41,12 +41,13 @@ export default function SubscriptionsPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const toggleSubscribe = async (podcast: PodcastRow) => {
-    await fetch(`/api/podcasts/${podcast.id}`, {
+    const next = !podcast.subscribed;
+    const res = await fetch(`/api/podcasts/${podcast.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscribed: !podcast.subscribed }),
+      body: JSON.stringify({ subscribed: next }),
     });
-    mutate();
+    if (res.ok) mutate();
   };
 
   const confirmDelete = async () => {
