@@ -27,10 +27,10 @@ type RssItem = {
 // POST /api/podcasts/[id]/refresh — fetch RSS and return new (untracked) episodes
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const podcast = await prisma.podcast.findUnique({ where: { id } });
     if (!podcast) {

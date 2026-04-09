@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { pipeline as streamPipeline } from 'stream/promises';
-import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { transcribeAudio } from './transcription';
 import { summarizeTranscript, type SummaryMode } from './summarization';
@@ -55,7 +54,20 @@ function assertUrlSafe(url: string): void {
 async function downloadRemoteFile(url: string, episodeId: string): Promise<string> {
   assertUrlSafe(url);
 
-  const response = await fetch(url, { redirect: 'follow' });
+  // Use manual redirect handling to validate each redirect target against SSRF
+  let response = await fetch(url, { redirect: 'manual' });
+  let redirectCount = 0;
+  const MAX_REDIRECTS = 5;
+
+  while (response.status >= 300 && response.status < 400 && redirectCount < MAX_REDIRECTS) {
+    const location = response.headers.get('location');
+    if (!location) break;
+    const redirectUrl = new URL(location, url).href;
+    assertUrlSafe(redirectUrl); // Validate redirect target
+    response = await fetch(redirectUrl, { redirect: 'manual' });
+    redirectCount++;
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to download audio: HTTP ${response.status} from ${url}`);
   }
@@ -85,15 +97,10 @@ async function downloadRemoteFile(url: string, episodeId: string): Promise<strin
     throw new Error('Response body is empty');
   }
 
-  // Stream to disk, counting bytes to enforce size limit
+  // Stream directly to disk, counting bytes to enforce size limit
   let bytesWritten = 0;
   const writeStream = fs.createWriteStream(tmpPath);
 
-  const countingStream = new Readable({
-    read() {},
-  });
-
-  // Process body as a web ReadableStream → Node Readable
   const reader = response.body.getReader();
   try {
     // eslint-disable-next-line no-constant-condition
@@ -104,16 +111,20 @@ async function downloadRemoteFile(url: string, episodeId: string): Promise<strin
       if (bytesWritten > MAX_DOWNLOAD_BYTES) {
         reader.cancel();
         writeStream.destroy();
-        // Clean up partial file
         fs.promises.unlink(tmpPath).catch(() => {});
         throw new Error(
           `Remote file exceeds ${Math.round(MAX_DOWNLOAD_BYTES / 1024 / 1024)}MB size limit`,
         );
       }
-      countingStream.push(Buffer.from(value));
+      if (!writeStream.write(Buffer.from(value))) {
+        // Backpressure: wait for drain before writing more
+        await new Promise<void>((resolve) => writeStream.once('drain', resolve));
+      }
     }
-    countingStream.push(null);
-    await streamPipeline(countingStream, writeStream);
+    await new Promise<void>((resolve, reject) => {
+      writeStream.end(() => resolve());
+      writeStream.on('error', reject);
+    });
   } finally {
     reader.releaseLock();
   }
@@ -195,15 +206,23 @@ export async function processEpisode(episodeId: string): Promise<void> {
         create: {
           episodeId,
           overview: summaryResult.overview,
+          sentiment: summaryResult.sentiment,
+          sentimentNote: summaryResult.sentimentNote,
           keyPoints: summaryResult.keyPoints,
           quotes: summaryResult.quotes,
           tags: summaryResult.tags,
+          qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
         update: {
           overview: summaryResult.overview,
+          sentiment: summaryResult.sentiment,
+          sentimentNote: summaryResult.sentimentNote,
           keyPoints: summaryResult.keyPoints,
           quotes: summaryResult.quotes,
           tags: summaryResult.tags,
+          qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
       }),
       prisma.episode.update({
