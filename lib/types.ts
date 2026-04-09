@@ -17,11 +17,30 @@ export type EpisodeWithRelations = Episode & {
 // AI Service types
 // ============================================================
 
+export interface QAItem {
+  q: string;
+  points: string[];
+}
+
+export interface WatchlistItem {
+  name: string;
+  ticker: string | null;
+  market: string;
+  sentiment: '看多' | '看空' | '中性' | '觀望';
+  risk: '高' | '中' | '低';
+  event: string;
+  viewpoint: string;
+}
+
 export interface SummaryResult {
   overview: string;
+  sentiment: string | null;
+  sentimentNote: string | null;
   keyPoints: string[];
   quotes: string[];
   tags: string[];
+  qa: QAItem[];
+  watchlist: WatchlistItem[];
 }
 
 // ============================================================

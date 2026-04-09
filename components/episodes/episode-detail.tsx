@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle,
   Copy, Check, RefreshCw, Download, BookOpen, Lightbulb, Sparkles,
+  TrendingUp, TrendingDown, Minus, BarChart2, HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -12,7 +13,7 @@ import { useEpisodePolling } from '@/hooks/use-episode-polling';
 import { useToast } from '@/hooks/use-toast';
 import { parseJsonField, formatDateTime, formatDuration, parseTickerSegments } from '@/lib/utils';
 import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
-import type { EpisodeWithRelations } from '@/lib/types';
+import type { EpisodeWithRelations, QAItem, WatchlistItem } from '@/lib/types';
 
 interface EpisodeDetailProps {
   initialEpisode: EpisodeWithRelations;
@@ -42,6 +43,94 @@ function CategoryBadge({ category }: { category: string }) {
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${cls}`}>
       {category}
     </span>
+  );
+}
+
+/** Sentiment badge for overall market stance */
+function SentimentBadge({ sentiment, note }: { sentiment: string; note?: string | null }) {
+  const config = {
+    '看多': { icon: TrendingUp, cls: 'bg-success/10 text-success border-success/20' },
+    '看空': { icon: TrendingDown, cls: 'bg-destructive/10 text-destructive border-destructive/20' },
+    '中性': { icon: Minus, cls: 'bg-muted text-muted-foreground border-border' },
+  }[sentiment] ?? { icon: Minus, cls: 'bg-muted text-muted-foreground border-border' };
+  const Icon = config.icon;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${config.cls}`}
+      title={note ?? undefined}
+    >
+      <Icon className="h-3 w-3" />
+      {sentiment}
+    </span>
+  );
+}
+
+/** Watchlist card for a single stock/company */
+function WatchlistCard({ item }: { item: WatchlistItem }) {
+  const sentimentCfg = {
+    '看多': { cls: 'text-success bg-success/10', icon: TrendingUp },
+    '看空': { cls: 'text-destructive bg-destructive/10', icon: TrendingDown },
+    '中性': { cls: 'text-muted-foreground bg-muted', icon: Minus },
+    '觀望': { cls: 'text-warning bg-warning/10', icon: Minus },
+  }[item.sentiment] ?? { cls: 'text-muted-foreground bg-muted', icon: Minus };
+  const riskCls = { '高': 'text-destructive', '中': 'text-warning', '低': 'text-success' }[item.risk] ?? 'text-muted-foreground';
+  const SentIcon = sentimentCfg.icon;
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/20">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">{item.name}</span>
+            {item.ticker && (
+              <mark className="bg-warning/20 text-warning-foreground font-mono text-xs font-semibold rounded px-1 not-italic" style={{ fontStyle: 'normal' }}>
+                {item.ticker}
+              </mark>
+            )}
+            <span className="text-[11px] text-muted-foreground">{item.market}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-semibold ${sentimentCfg.cls}`}>
+            <SentIcon className="h-3 w-3" />
+            {item.sentiment}
+          </span>
+          <span className={`text-[11px] font-medium ${riskCls}`}>風險：{item.risk}</span>
+        </div>
+      </div>
+      <div className="px-4 py-3 space-y-2">
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">事件</p>
+          <TickerText text={item.event} className="text-sm leading-relaxed" />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">觀點</p>
+          <TickerText text={item.viewpoint} className="text-sm leading-relaxed text-foreground/80" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Q&A section for a single Q&A item */
+function QACard({ item, index }: { item: QAItem; index: number }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 items-start">
+        <span className="flex-shrink-0 text-xs font-bold text-primary bg-primary/10 rounded-full h-5 w-5 flex items-center justify-center mt-0.5">
+          Q
+        </span>
+        <p className="text-sm font-medium leading-snug">{item.q}</p>
+      </div>
+      <ul className="ml-7 space-y-1.5">
+        {item.points.map((point, j) => (
+          <li key={j} className="flex gap-2 items-start">
+            <span className="flex-shrink-0 text-[10px] font-bold text-muted-foreground mt-1">{index + 1}.{j + 1}</span>
+            <TickerText text={point} className="text-sm leading-relaxed text-foreground/85" />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -101,6 +190,10 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
   const quotes = parseJsonField<string[]>(summary?.quotes ?? null, []);
   const tags = parseJsonField<string[]>(summary?.tags ?? null, []);
+  const qa = parseJsonField<QAItem[]>((summary as unknown as Record<string, unknown>)?.qa ?? null, []);
+  const watchlist = parseJsonField<WatchlistItem[]>((summary as unknown as Record<string, unknown>)?.watchlist ?? null, []);
+  const sentiment = (summary as unknown as Record<string, unknown>)?.sentiment as string | null ?? null;
+  const sentimentNote = (summary as unknown as Record<string, unknown>)?.sentimentNote as string | null ?? null;
   const isProcessing = (PROCESSING_STATUSES as string[]).includes(episode.status);
 
   const exportMarkdown = useCallback(() => {
@@ -108,11 +201,22 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
     const md = [
       `# ${episode.title}`,
       `> ${episode.podcast?.title ?? ''}${episode.publishedAt ? ` | ${new Date(episode.publishedAt).toLocaleDateString('zh-TW')}` : ''}`,
+      sentiment ? `\n**市場立場：${sentiment}** ${sentimentNote ? `— ${sentimentNote}` : ''}` : '',
       '',
       '## 整體摘要',
       summary.overview,
       ...(keyPoints.length > 0
         ? ['', '## 重點整理', ...keyPoints.map((p, i) => `${i + 1}. ${p}`)]
+        : []),
+      ...(watchlist.length > 0
+        ? ['', '## 主題/標的觀點', ...watchlist.map((w) =>
+            `### ${w.name}${w.ticker ? ` (${w.ticker})` : ''} · ${w.market} · ${w.sentiment} · 風險${w.risk}\n**事件：**${w.event}\n**觀點：**${w.viewpoint}`
+          )]
+        : []),
+      ...(qa.length > 0
+        ? ['', '## Q&A 深度解析', ...qa.map((item, i) =>
+            `**Q${i + 1}. ${item.q}**\n${item.points.map((p, j) => `${j + 1}. ${p}`).join('\n')}`
+          )]
         : []),
       ...(quotes.length > 0
         ? ['', '## 金句精選', ...quotes.map((q) => `> ${q}`)]
@@ -120,7 +224,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       ...(tags.length > 0
         ? ['', '## 標籤', tags.map((t) => `\`${t}\``).join(' ')]
         : []),
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -128,7 +232,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
     a.download = `${episode.title.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-')}.md`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [summary, episode, keyPoints, quotes, tags]);
+  }, [summary, episode, keyPoints, quotes, tags, sentiment, sentimentNote, watchlist, qa]);
 
   const copyFull = useCallback(() => {
     if (!summary) return;
@@ -204,6 +308,16 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       {/* ── Summary ────────────────────────────────────────────── */}
       {summary && (
         <>
+          {/* Sentiment badge */}
+          {sentiment && (
+            <div className="flex items-center gap-2">
+              <SentimentBadge sentiment={sentiment} note={sentimentNote} />
+              {sentimentNote && (
+                <span className="text-xs text-muted-foreground">{sentimentNote}</span>
+              )}
+            </div>
+          )}
+
           {/* Overview */}
           <section className="rounded-lg border bg-card">
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
@@ -257,6 +371,40 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
                   );
                 })}
               </ul>
+            </section>
+          )}
+
+          {/* Watchlist */}
+          {watchlist.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold flex items-center gap-1.5 px-0.5">
+                <BarChart2 className="h-4 w-4 text-primary" />
+                主題/標的觀點
+              </h2>
+              <div className="space-y-2">
+                {watchlist.map((item, i) => (
+                  <WatchlistCard key={i} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Q&A */}
+          {qa.length > 0 && (
+            <section className="rounded-lg border bg-card">
+              <div className="px-4 pt-4 pb-2">
+                <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                  <HelpCircle className="h-4 w-4 text-primary" />
+                  Q&A 深度解析
+                </h2>
+              </div>
+              <div className="px-4 pb-4 space-y-5 divide-y">
+                {qa.map((item, i) => (
+                  <div key={i} className={i > 0 ? 'pt-4' : ''}>
+                    <QACard item={item} index={i} />
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 

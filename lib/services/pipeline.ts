@@ -3,6 +3,7 @@ import path from 'path';
 import { pipeline as streamPipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { transcribeAudio } from './transcription';
 import { summarizeTranscript, type SummaryMode } from './summarization';
@@ -195,15 +196,23 @@ export async function processEpisode(episodeId: string): Promise<void> {
         create: {
           episodeId,
           overview: summaryResult.overview,
+          sentiment: summaryResult.sentiment,
+          sentimentNote: summaryResult.sentimentNote,
           keyPoints: summaryResult.keyPoints,
           quotes: summaryResult.quotes,
           tags: summaryResult.tags,
+          qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
         update: {
           overview: summaryResult.overview,
+          sentiment: summaryResult.sentiment,
+          sentimentNote: summaryResult.sentimentNote,
           keyPoints: summaryResult.keyPoints,
           quotes: summaryResult.quotes,
           tags: summaryResult.tags,
+          qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
       }),
       prisma.episode.update({
