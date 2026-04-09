@@ -4,7 +4,7 @@ import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Trash2, ChevronLeft, ChevronRight, Search, ArrowUpDown, ArrowUp, ArrowDown, Tag, X } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, ArrowUpDown, ArrowUp, ArrowDown, Tag, X, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,7 @@ export function EpisodeTable() {
   const activeTag = searchParams.get('tag') ?? '';
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
 
   useEffect(() => {
@@ -102,6 +103,20 @@ export function EpisodeTable() {
     }
   }, [deleteTarget, mutate, toast]);
 
+  const handleRetry = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRetrying((r) => ({ ...r, [id]: true }));
+    try {
+      await fetch(`/api/episodes/${id}/retry`, { method: 'POST' });
+      mutate();
+    } catch {
+      toast({ title: '重試失敗', description: '請稍後再試', variant: 'destructive' });
+    } finally {
+      setRetrying((r) => ({ ...r, [id]: false }));
+    }
+  }, [mutate, toast]);
+
   const toggleSort = (field: string) => {
     if (sortBy === field) {
       updateParams({ sortOrder: sortOrder === 'desc' ? 'asc' : 'desc', page: null });
@@ -166,8 +181,8 @@ export function EpisodeTable() {
       {/* ── Sort bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground border-b pb-2">
         <span>排序：</span>
-        {(['createdAt', 'title', 'status'] as const).map((field) => {
-          const labels = { createdAt: '時間', title: '標題', status: '狀態' };
+        {(['createdAt', 'publishedAt', 'title', 'status'] as const).map((field) => {
+          const labels = { createdAt: '建立時間', publishedAt: '發布日期', title: '標題', status: '狀態' };
           return (
             <button
               key={field}
@@ -207,7 +222,7 @@ export function EpisodeTable() {
               href={`/history/${ep.id}`}
               className="block rounded-lg border bg-card hover:bg-muted/40 transition-colors p-4 group"
             >
-              {/* Row 1: title + status + delete */}
+              {/* Row 1: title + status + actions */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug group-hover:underline truncate">
@@ -216,11 +231,25 @@ export function EpisodeTable() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {ep.podcast?.title ?? '—'}
                     {ep.duration ? ` · ${formatDuration(ep.duration)}` : ''}
-                    {' · '}{formatRelativeTime(ep.createdAt)}
+                    {ep.publishedAt
+                      ? ` · 發布 ${new Date(ep.publishedAt).toLocaleDateString('zh-TW')}`
+                      : ` · ${formatRelativeTime(ep.createdAt)}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <StatusBadge status={ep.status} />
+                  {ep.status === EPISODE_STATUS.ERROR && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary transition-colors"
+                      onClick={(e) => handleRetry(ep.id, e)}
+                      disabled={retrying[ep.id]}
+                      title="重新處理"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${retrying[ep.id] ? 'animate-spin' : ''}`} />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"

@@ -5,7 +5,7 @@ import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { transcribeAudio } from './transcription';
-import { summarizeTranscript } from './summarization';
+import { summarizeTranscript, type SummaryMode } from './summarization';
 import { EPISODE_STATUS, MAX_DOWNLOAD_BYTES } from '@/lib/constants';
 import { processingLimiter } from '@/lib/concurrency';
 
@@ -185,7 +185,8 @@ export async function processEpisode(episodeId: string): Promise<void> {
     }
 
     // ── Step 2: Summarization ──────────────────────────────────────────────
-    const summaryResult = await summarizeTranscript(transcript);
+    const mode = ((episode as unknown as { summaryMode?: string }).summaryMode ?? 'standard') as SummaryMode;
+    const summaryResult = await summarizeTranscript(transcript, mode);
 
     // Use upsert so retries don't fail when a summary already exists
     await prisma.$transaction([

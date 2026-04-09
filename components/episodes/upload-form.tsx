@@ -16,6 +16,7 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
   const maxMB = Math.round(MAX_UPLOAD_BYTES / 1024 / 1024);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
+  const [summaryMode, setSummaryMode] = useState<'brief' | 'standard' | 'deep'>('standard');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -59,6 +60,7 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('title', title || file.name.replace(/\.[^.]+$/, ''));
+    formData.append('summaryMode', summaryMode);
 
     // Use XMLHttpRequest for upload progress tracking
     await new Promise<void>((resolve, reject) => {
@@ -153,6 +155,32 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+      </div>
+
+      {/* Summary mode */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">摘要深度</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {([
+            { value: 'brief', label: '快速', desc: '3 重點 · 省成本' },
+            { value: 'standard', label: '標準', desc: '6-10 重點' },
+            { value: 'deep', label: '深度', desc: '10-15 重點' },
+          ] as const).map(({ value, label, desc }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSummaryMode(value)}
+              className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                summaryMode === value
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <p className="text-xs font-medium">{label}</p>
+              <p className="text-[10px] text-muted-foreground">{desc}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Upload progress */}

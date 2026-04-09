@@ -6,6 +6,9 @@ import { TRANSCRIPT_CHUNK_CHARS } from '@/lib/constants';
 const MODEL_QUALITY = 'claude-sonnet-4-5';
 const MODEL_FAST = 'claude-haiku-4-5-20251001';
 
+const TICKER_FORMAT_RULE = `- 美股代號統一寫成 $NVDA、$AAPL、$TSLA 格式（代號前加 $）
+- 台股代號統一寫成 2330（台積電）格式（4位數字後接公司名）`;
+
 const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。請仔細分析逐字稿，提取對投資者與知識學習者最有價值的資訊，以繁體中文回應。
 
 只輸出以下格式的有效 JSON，不包含任何其他文字或 markdown：
@@ -26,7 +29,8 @@ const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專
   【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】
 - quotes：3-5 個最有洞見、最值得記錄的原文語句
 - tags：4-8 個精準標籤，涵蓋產業、概念、地區、人名等維度
-- 所有內容使用繁體中文`;
+- 所有內容使用繁體中文
+${TICKER_FORMAT_RULE}`;
 
 const CHUNK_PROMPT = `你是內容摘要助理。請簡潔摘要以下 Podcast 片段，以繁體中文輸出有效 JSON：
 
@@ -109,14 +113,16 @@ async function callClaude(
   systemPrompt: string,
   userContent: string,
   retries = 3,
+  maxTokens?: number,
 ): Promise<SummaryResult> {
   let lastError: Error | null = null;
+  const resolvedMaxTokens = maxTokens ?? (model === MODEL_FAST ? 1024 : 2048);
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await client.messages.create({
         model,
-        max_tokens: model === MODEL_FAST ? 1024 : 2048,
+        max_tokens: resolvedMaxTokens,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       });
@@ -135,6 +141,42 @@ async function callClaude(
   throw new Error(`Claude API failed after ${retries} attempts: ${lastError?.message}`);
 }
 
+export type SummaryMode = 'brief' | 'standard' | 'deep';
+
+const MODE_SYSTEM_PROMPTS: Record<SummaryMode, string> = {
+  brief: `你是一位專業的財經 Podcast 摘要助理。請快速提取本集最核心的 3 個重點，以繁體中文輸出。
+
+只輸出有效 JSON：
+{
+  "overview": "1-2 段簡短摘要（100-150 字），只含最重要的結論",
+  "keyPoints": ["【類別】重點1", "【類別】重點2", "【類別】重點3"],
+  "quotes": ["1 個最值得記錄的金句"],
+  "tags": ["標籤1", "標籤2", "標籤3"]
+}
+${TICKER_FORMAT_RULE}`,
+
+  standard: SYSTEM_PROMPT,
+
+  deep: `你是一位專業的財經與知識型 Podcast 深度分析師。請全面分析逐字稿，以繁體中文回應。
+
+只輸出有效 JSON：
+{
+  "overview": "4-5 段深度摘要（500-800 字），含背景脈絡、核心論點、數字佐證、市場影響、個人觀點",
+  "keyPoints": [
+    "【類別】具體重點（含數字、名稱、可行動資訊）"
+  ],
+  "quotes": ["最有洞見的原文語句"],
+  "tags": ["精準標籤"]
+}
+
+規則：
+- overview：500-800 字，深度分析包含：宏觀背景 → 核心論述 → 數據/案例支撐 → 市場影響 → 操作啟示
+- keyPoints：10-15 條，細分類別如【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】【反向觀點】【時間框架】
+- quotes：5-8 個最有洞見、最獨到的原文金句
+- tags：6-10 個涵蓋產業、概念、地區、人名、事件的精準標籤
+${TICKER_FORMAT_RULE}`,
+};
+
 /**
  * Summarize a podcast transcript using Claude.
  *
@@ -145,12 +187,15 @@ async function callClaude(
  * This keeps quality high for the output users actually read,
  * while minimising token cost on bulk chunk pre-processing.
  */
-export async function summarizeTranscript(transcript: string): Promise<SummaryResult> {
+export async function summarizeTranscript(transcript: string, mode: SummaryMode = 'standard'): Promise<SummaryResult> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const systemPrompt = MODE_SYSTEM_PROMPTS[mode] ?? SYSTEM_PROMPT;
+  // brief mode: always single-call Sonnet (short output anyway)
+  const maxTokens = mode === 'brief' ? 1024 : mode === 'deep' ? 4096 : 2048;
 
-  if (transcript.length <= TRANSCRIPT_CHUNK_CHARS * 2) {
-    // Short enough — use Sonnet directly for best quality
-    return callClaude(client, MODEL_QUALITY, SYSTEM_PROMPT, transcript);
+  if (transcript.length <= TRANSCRIPT_CHUNK_CHARS * 2 || mode === 'brief') {
+    // Short enough (or brief mode) — use Sonnet directly for best quality
+    return callClaude(client, MODEL_QUALITY, systemPrompt, transcript, 3, maxTokens);
   }
 
   // Map phase: cheap Haiku per chunk
@@ -181,6 +226,8 @@ export async function summarizeTranscript(transcript: string): Promise<SummaryRe
     MODEL_QUALITY,
     SYNTHESIS_PROMPT,
     `請整合以下各片段摘要，生成完整的最終摘要：\n\n${combinedText}\n\n收集到的重點：\n${allKeyPoints.join('\n')}\n\n收集到的金句：\n${allQuotes.join('\n')}\n\n收集到的標籤：${allTags.join('、')}`,
+    3,
+    maxTokens,
   );
 
   return {

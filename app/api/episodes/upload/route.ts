@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const title = (formData.get('title') as string | null)?.trim() || null;
+    const summaryMode = (['brief', 'standard', 'deep'].includes(formData.get('summaryMode') as string)
+      ? formData.get('summaryMode') as string
+      : 'standard');
 
     if (!file) {
       return NextResponse.json({ error: '請選擇音檔' }, { status: 400 });
@@ -63,6 +66,7 @@ export async function POST(req: NextRequest) {
         title: title ?? file.name.replace(/\.[^.]+$/, ''),
         audioUrl: tmpPath,
         status: 'pending',
+        summaryMode,
       },
     });
 

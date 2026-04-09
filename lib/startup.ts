@@ -1,10 +1,12 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { prisma } from '@/lib/prisma';
 
 /**
  * Lazy server startup — runs once on the first API request.
  * 1. Recovers stale episodes (transcribing/summarizing) after a crash
  * 2. Cleans up orphaned /tmp audio files older than 1 hour
+ * 3. Ensures pg_trgm GIN indexes exist for fast full-text search
  */
 let startupPromise: Promise<void> | null = null;
 
@@ -19,6 +21,7 @@ async function runStartup(): Promise<void> {
   await Promise.allSettled([
     recoverEpisodes(),
     cleanStaleTmpFiles(),
+    ensureSearchIndexes(),
   ]);
 }
 
@@ -28,6 +31,28 @@ async function recoverEpisodes(): Promise<void> {
     await recoverStaleEpisodes();
   } catch (err) {
     console.error('[startup] Recovery failed:', err);
+  }
+}
+
+/**
+ * Create pg_trgm GIN indexes for ILIKE full-text search on transcript and title.
+ * These make "contains" queries ~100x faster on large text columns.
+ * Uses IF NOT EXISTS so re-runs are safe.
+ */
+async function ensureSearchIndexes(): Promise<void> {
+  try {
+    await prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_episode_transcript_trgm
+      ON "Episode" USING GIN(transcript gin_trgm_ops)
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_episode_title_trgm
+      ON "Episode" USING GIN(title gin_trgm_ops)
+    `);
+  } catch (err) {
+    // Non-fatal: some PostgreSQL providers may restrict extension creation
+    console.warn('[startup] Search index creation skipped:', err instanceof Error ? err.message : err);
   }
 }
 
