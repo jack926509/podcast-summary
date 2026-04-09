@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Rss, Loader2, Bell, BellOff } from 'lucide-react';
+import { mutate as globalMutate } from 'swr';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,6 +96,8 @@ export function FeedForm({ onSuccess }: FeedFormProps) {
         return;
       }
       setPodcast((p) => p ? { ...p, subscribed: next } : p);
+      // Invalidate global SWR cache so subscriptions page shows fresh data immediately
+      await globalMutate('/api/podcasts');
       toast({
         title: next ? '訂閱成功' : '已取消訂閱',
         description: next
