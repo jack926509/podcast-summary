@@ -3,8 +3,8 @@ import type { SummaryResult, QAItem, WatchlistItem } from '@/lib/types';
 import { TRANSCRIPT_CHUNK_CHARS } from '@/lib/constants';
 
 // Sonnet for final (high-quality) output; Haiku for cheap chunk pre-processing
-const MODEL_QUALITY = 'claude-sonnet-4-5';
-const MODEL_FAST = 'claude-haiku-4-5-20251001';
+const MODEL_QUALITY = 'claude-sonnet-4-6';
+const MODEL_FAST = 'claude-haiku-4-5';
 
 const TICKER_FORMAT_RULE = `- 美股代號統一寫成 $NVDA、$AAPL、$TSLA 格式（代號前加 $）
 - 台股代號統一寫成 2330（台積電）格式（4位數字後接公司名）`;
@@ -94,6 +94,29 @@ ${WATCHLIST_SCHEMA}
 - qa：整合各片段中的 Q&A 討論；無則空陣列
 - watchlist：整合各片段提及的所有股票/公司分析；無則空陣列
 - 去除重複資訊，保留最有價值的內容`;
+
+/**
+ * Run async tasks with a bounded concurrency limit.
+ * Workers pull from a shared index so chunks are processed in order but without blocking.
+ */
+async function parallelMap<T, R>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return results;
+}
 
 /**
  * Split transcript into chunks by character count.
@@ -279,19 +302,19 @@ export async function summarizeTranscript(transcript: string, mode: SummaryMode 
     return callClaude(client, MODEL_QUALITY, systemPrompt, transcript, 3, maxTokens);
   }
 
-  // Map phase: cheap Haiku per chunk
+  // Map phase: cheap Haiku per chunk — parallelised (max 3 concurrent)
   const chunks = chunkTranscript(transcript, TRANSCRIPT_CHUNK_CHARS);
-  const chunkSummaries: SummaryResult[] = [];
-
-  for (const chunk of chunks) {
-    const summary = await callClaude(
-      client,
-      MODEL_FAST,
-      CHUNK_PROMPT,
-      `請摘要以下 Podcast 片段（這是整集的一部分）：\n\n${chunk}`,
-    );
-    chunkSummaries.push(summary);
-  }
+  const chunkSummaries = await parallelMap(
+    chunks,
+    (chunk) =>
+      callClaude(
+        client,
+        MODEL_FAST,
+        CHUNK_PROMPT,
+        `請摘要以下 Podcast 片段（這是整集的一部分）：\n\n${chunk}`,
+      ),
+    3,
+  );
 
   // Reduce phase: Sonnet synthesises into the final high-quality summary
   const combinedText = chunkSummaries

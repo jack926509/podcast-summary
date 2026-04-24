@@ -20,9 +20,6 @@ export const WHISPER_SIZE_LIMIT = 25 * 1024 * 1024;
 /** ffmpeg 分段時長（秒），10 分鐘 */
 export const CHUNK_DURATION_SECONDS = 600;
 
-/** Claude 摘要分段字數上限（超過此值啟用 map-reduce） */
-export const TRANSCRIPT_CHUNK_WORDS = 3000;
-
 /** 前端輪詢間隔（毫秒） */
 export const POLLING_INTERVAL_MS = 3000;
 
@@ -39,4 +36,4 @@ export const MANUAL_PODCAST_TITLE = '手動上傳';
 export const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
 
 /** Claude 摘要分段字元數上限（中文適用，超過此值啟用 map-reduce） */
-export const TRANSCRIPT_CHUNK_CHARS = 6000;
+export const TRANSCRIPT_CHUNK_CHARS = 8000;
