@@ -4,75 +4,86 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* ── Backgrounds ─────────────────────────────── */
+    --background:        37 28% 97%;     /* warm cream  #FAF7F2 */
+    --foreground:        25 25% 10%;     /* warm dark   #1C1510 */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card:              0  0% 100%;     /* pure white card on warm bg */
+    --card-foreground:   25 25% 10%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover:           0  0% 100%;
+    --popover-foreground: 25 25% 10%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* ── Brand: Claude coral / terracotta ─────────── */
+    --primary:           18 68% 52%;     /* #CE6A40 */
+    --primary-foreground: 0  0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* ── Secondary / muted ────────────────────────── */
+    --secondary:         37 25% 92%;     /* warm beige  #EDEAE3 */
+    --secondary-foreground: 25 20% 18%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted:             37 20% 94%;     /* light beige #F1EDE8 */
+    --muted-foreground:  25 12% 50%;     /* warm gray   #7F7464 */
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent:            37 25% 91%;
+    --accent-foreground: 25 20% 18%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* ── Semantic ──────────────────────────────────── */
+    --destructive:       4  72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --success: 142 76% 36%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --success:           148 60% 35%;
+    --success-foreground: 0  0% 100%;
+    --warning:           35 88% 48%;
     --warning-foreground: 0 0% 100%;
 
-    --radius: 0.5rem;
+    /* ── Chrome ────────────────────────────────────── */
+    --border:            37 18% 87%;     /* warm border #DFD9D2 */
+    --input:             37 18% 87%;
+    --ring:              18 68% 52%;     /* matches primary */
+
+    /* ── Sidebar ───────────────────────────────────── */
+    --sidebar-background: 37 22% 93%;   /* #EDE9E2 – slightly more beige */
+
+    /* ── Shape ─────────────────────────────────────── */
+    --radius: 0.625rem;                  /* 10 px — slightly rounder */
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background:        25 20%  9%;     /* warm dark   #16120E */
+    --foreground:        37 20% 94%;     /* warm light  #F0EBE4 */
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card:              25 18% 12%;     /* #1E1813 */
+    --card-foreground:   37 20% 94%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover:           25 18% 12%;
+    --popover-foreground: 37 20% 94%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary:           18 72% 60%;     /* #DC7A52 lighter coral */
+    --primary-foreground: 0  0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary:         25 16% 18%;     /* #2B201A */
+    --secondary-foreground: 37 18% 88%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted:             25 15% 16%;     /* #272018 */
+    --muted-foreground:  35 12% 60%;     /* #9C9083 */
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent:            25 16% 18%;
+    --accent-foreground: 37 18% 88%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive:       4  60% 38%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-
-    --success: 142 70% 45%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 60%;
+    --success:           148 55% 42%;
+    --success-foreground: 0  0% 100%;
+    --warning:           35 85% 56%;
     --warning-foreground: 0 0% 10%;
+
+    --border:            25 15% 22%;     /* #342720 */
+    --input:             25 15% 22%;
+    --ring:              18 72% 60%;
+
+    --sidebar-background: 25 22%  7%;   /* #12100C – darker than card */
   }
 }
 
@@ -82,5 +93,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  /* Smooth scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
   }
 }

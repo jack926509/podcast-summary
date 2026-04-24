@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu, Mic } from 'lucide-react';
+import { Menu, Headphones } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sidebar } from './sidebar';
 
@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -35,18 +35,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile top bar */}
-        <header className="flex h-14 items-center gap-3 border-b px-4 md:hidden">
+        <header className="flex h-[60px] items-center gap-3 border-b border-border/60 bg-sidebar px-4 md:hidden">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <Mic className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm">Podcast 摘要</span>
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15">
+              <Headphones className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <span className="font-semibold text-sm tracking-tight">Podcast 摘要</span>
           </div>
         </header>
 
