@@ -213,6 +213,7 @@ export async function processEpisode(episodeId: string): Promise<void> {
           tags: summaryResult.tags,
           qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
           watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          actionItems: summaryResult.actionItems.length > 0 ? (summaryResult.actionItems as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
         update: {
           overview: summaryResult.overview,
@@ -223,6 +224,7 @@ export async function processEpisode(episodeId: string): Promise<void> {
           tags: summaryResult.tags,
           qa: summaryResult.qa.length > 0 ? (summaryResult.qa as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
           watchlist: summaryResult.watchlist.length > 0 ? (summaryResult.watchlist as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
+          actionItems: summaryResult.actionItems.length > 0 ? (summaryResult.actionItems as unknown as Prisma.InputJsonArray) : Prisma.DbNull,
         },
       }),
       prisma.episode.update({

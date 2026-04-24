@@ -42,6 +42,7 @@ const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專
   ],
   "quotes": ["原文金句或精彩見解（保留講者語氣）"],
   "tags": ["主題標籤"],
+  "actionItems": ["明確可執行的行動建議（20-60字）"],
 ${QA_SCHEMA},
 ${WATCHLIST_SCHEMA}
 }
@@ -53,6 +54,7 @@ ${WATCHLIST_SCHEMA}
   【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】
 - quotes：3-5 個最有洞見、最值得記錄的原文語句
 - tags：4-8 個精準標籤，涵蓋產業、概念、地區、人名等維度
+- actionItems：2-4 條聽完本集後明確可執行的建議，例如「留意下週 $NVDA 財報」「觀察某指標是否突破」「考慮分批佈局某標的」；非財經或無明確建議時填空陣列 []
 - qa：若有 Q&A 或問答討論段落則提取（無則空陣列 []）；每題 2-4 個要點
 - watchlist：提取所有被分析的股票/公司/標的（無則空陣列 []）；event 寫客觀事件，viewpoint 寫主觀觀點
 - 所有內容使用繁體中文
@@ -82,6 +84,7 @@ const SYNTHESIS_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要
   ],
   "quotes": ["最值得記錄的原文金句"],
   "tags": ["精準主題標籤"],
+  "actionItems": ["明確可執行的行動建議（20-60字）"],
 ${QA_SCHEMA},
 ${WATCHLIST_SCHEMA}
 }
@@ -91,6 +94,7 @@ ${WATCHLIST_SCHEMA}
 - keyPoints：6-10 條，以【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【操作建議】等類別開頭
 - quotes：3-5 個最有洞見的原文語句
 - tags：4-8 個涵蓋產業、概念、地區、人名的精準標籤
+- actionItems：2-4 條聽完本集後明確可執行的建議；非財經或無明確建議時填空陣列 []
 - qa：整合各片段中的 Q&A 討論；無則空陣列
 - watchlist：整合各片段提及的所有股票/公司分析；無則空陣列
 - 去除重複資訊，保留最有價值的內容`;
@@ -188,6 +192,10 @@ function extractJson(text: string): SummaryResult {
         }))
     : [];
 
+  const actionItems: string[] = Array.isArray(parsed.actionItems)
+    ? parsed.actionItems.map(String)
+    : [];
+
   return {
     overview: String(parsed.overview ?? ''),
     sentiment: parsed.sentiment && parsed.sentiment !== 'null' ? String(parsed.sentiment) : null,
@@ -197,6 +205,7 @@ function extractJson(text: string): SummaryResult {
     tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [],
     qa,
     watchlist,
+    actionItems,
   };
 }
 
@@ -267,6 +276,7 @@ ${TICKER_FORMAT_RULE}`,
   ],
   "quotes": ["最有洞見的原文語句"],
   "tags": ["精準標籤"],
+  "actionItems": ["明確可執行的行動建議（20-60字）"],
 ${QA_SCHEMA},
 ${WATCHLIST_SCHEMA}
 }
@@ -276,6 +286,7 @@ ${WATCHLIST_SCHEMA}
 - keyPoints：10-15 條，細分類別如【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】【反向觀點】【時間框架】
 - quotes：5-8 個最有洞見、最獨到的原文金句
 - tags：6-10 個涵蓋產業、概念、地區、人名、事件的精準標籤
+- actionItems：2-5 條明確可執行的深度行動建議；非財經或無明確建議時填空陣列 []
 - qa：深度提取所有 Q&A 討論，每題 3-5 個要點
 - watchlist：完整分析所有提及的股票/公司，event 與 viewpoint 各 50-100字
 ${TICKER_FORMAT_RULE}`,
@@ -343,5 +354,6 @@ export async function summarizeTranscript(transcript: string, mode: SummaryMode 
     tags: finalSummary.tags.length > 0 ? finalSummary.tags : allTags.slice(0, 8),
     qa: finalSummary.qa,
     watchlist: finalSummary.watchlist,
+    actionItems: finalSummary.actionItems,
   };
 }

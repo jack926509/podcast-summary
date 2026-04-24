@@ -63,6 +63,7 @@ model Summary {
   tags          Json?            // JSON array: 自動標籤
   qa            Json?            // JSON array: [{q, points[]}]
   watchlist     Json?            // JSON array: [{name, ticker, market, sentiment, risk, event, viewpoint}]
+  actionItems   Json?            // JSON array: 行動建議
 
   createdAt     DateTime @default(now())
 }

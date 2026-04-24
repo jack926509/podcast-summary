@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ChevronDown, ChevronUp, Quote, Tag, Loader2, AlertCircle,
   Copy, Check, RefreshCw, Download, BookOpen, Lightbulb, Sparkles,
-  TrendingUp, TrendingDown, Minus, BarChart2, HelpCircle,
+  TrendingUp, TrendingDown, Minus, BarChart2, HelpCircle, Zap, Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -66,7 +66,7 @@ function SentimentBadge({ sentiment, note }: { sentiment: string; note?: string 
 }
 
 /** Watchlist card for a single stock/company */
-function WatchlistCard({ item }: { item: WatchlistItem }) {
+function WatchlistCard({ item, onSearch }: { item: WatchlistItem; onSearch?: (q: string) => void }) {
   const sentimentCfg = {
     '看多': { cls: 'text-success bg-success/10', icon: TrendingUp },
     '看空': { cls: 'text-destructive bg-destructive/10', icon: TrendingDown },
@@ -81,11 +81,21 @@ function WatchlistCard({ item }: { item: WatchlistItem }) {
       <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/20">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{item.name}</span>
+            <button
+              onClick={() => onSearch?.(item.name)}
+              className="font-semibold text-sm hover:text-primary hover:underline decoration-primary/50 text-left"
+              title={`搜尋「${item.name}」的相關集數`}
+            >
+              {item.name}
+            </button>
             {item.ticker && (
-              <mark className="bg-warning/20 text-warning-foreground font-mono text-xs font-semibold rounded px-1 not-italic" style={{ fontStyle: 'normal' }}>
+              <button
+                onClick={() => onSearch?.(item.ticker!)}
+                className="bg-warning/20 text-warning-foreground font-mono text-xs font-semibold rounded px-1 hover:bg-warning/40 transition-colors"
+                title={`搜尋「${item.ticker}」的相關集數`}
+              >
                 {item.ticker}
-              </mark>
+              </button>
             )}
             <span className="text-[11px] text-muted-foreground">{item.market}</span>
           </div>
@@ -193,15 +203,27 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
     sentimentNote?: string | null;
     qa?: unknown;
     watchlist?: unknown;
+    actionItems?: unknown;
   };
   const keyPoints = parseJsonField<string[]>(summary?.keyPoints ?? null, []);
   const quotes = parseJsonField<string[]>(summary?.quotes ?? null, []);
   const tags = parseJsonField<string[]>(summary?.tags ?? null, []);
   const qa = parseJsonField<QAItem[]>(summaryAny?.qa ?? null, []);
   const watchlist = parseJsonField<WatchlistItem[]>(summaryAny?.watchlist ?? null, []);
+  const actionItems = parseJsonField<string[]>(summaryAny?.actionItems ?? null, []);
   const sentiment = summaryAny?.sentiment ?? null;
   const sentimentNote = summaryAny?.sentimentNote ?? null;
   const isProcessing = (PROCESSING_STATUSES as string[]).includes(episode.status);
+
+  // Quick-scan data
+  const quickPoints = keyPoints.slice(0, 3);
+  const bullCount = watchlist.filter((w) => w.sentiment === '看多').length;
+  const bearCount = watchlist.filter((w) => w.sentiment === '看空').length;
+
+  const handleTickerSearch = useCallback(
+    (q: string) => router.push(`/history?q=${encodeURIComponent(q)}`),
+    [router],
+  );
 
   const exportMarkdown = useCallback(() => {
     if (!summary) return;
@@ -214,6 +236,9 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       summary.overview,
       ...(keyPoints.length > 0
         ? ['', '## 重點整理', ...keyPoints.map((p, i) => `${i + 1}. ${p}`)]
+        : []),
+      ...(actionItems.length > 0
+        ? ['', '## 行動建議', ...actionItems.map((a) => `- ${a}`)]
         : []),
       ...(watchlist.length > 0
         ? ['', '## 主題/標的觀點', ...watchlist.map((w) =>
@@ -239,7 +264,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
     a.download = `${episode.title.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-')}.md`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [summary, episode, keyPoints, quotes, tags, sentiment, sentimentNote, watchlist, qa]);
+  }, [summary, episode, keyPoints, quotes, tags, sentiment, sentimentNote, watchlist, qa, actionItems]);
 
   const copyFull = useCallback(() => {
     if (!summary) return;
@@ -248,12 +273,15 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       keyPoints.length > 0
         ? `\n【重點整理】\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
         : '',
+      actionItems.length > 0
+        ? `\n【行動建議】\n${actionItems.map((a) => `• ${a}`).join('\n')}`
+        : '',
       quotes.length > 0
         ? `\n【金句精選】\n${quotes.map((q) => `"${q}"`).join('\n')}`
         : '',
     ].filter(Boolean).join('\n');
     handleCopy(full, 'full');
-  }, [summary, keyPoints, quotes, handleCopy]);
+  }, [summary, keyPoints, quotes, actionItems, handleCopy]);
 
   return (
     <div className="space-y-4">
@@ -315,12 +343,40 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
       {/* ── Summary ────────────────────────────────────────────── */}
       {summary && (
         <>
-          {/* Sentiment badge */}
-          {sentiment && (
-            <div className="flex items-center gap-2">
-              <SentimentBadge sentiment={sentiment} note={sentimentNote} />
-              {sentimentNote && (
-                <span className="text-xs text-muted-foreground">{sentimentNote}</span>
+          {/* Quick-scan card */}
+          {(sentiment || quickPoints.length > 0) && (
+            <div className="rounded-lg border bg-gradient-to-br from-primary/5 to-transparent p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5" />
+                  速覽
+                </h2>
+                {sentiment && <SentimentBadge sentiment={sentiment} note={sentimentNote} />}
+              </div>
+              {quickPoints.length > 0 && (
+                <ul className="space-y-1.5">
+                  {quickPoints.map((point, i) => {
+                    const { text } = parseKeyPoint(point);
+                    return (
+                      <li key={i} className="flex gap-2 items-start text-sm">
+                        <span className="flex-shrink-0 font-bold text-primary leading-snug">▸</span>
+                        <span className="leading-snug text-foreground/85">{text}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {(sentimentNote || watchlist.length > 0) && (
+                <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 border-t border-border/50 flex-wrap">
+                  {sentimentNote && <span>{sentimentNote}</span>}
+                  {watchlist.length > 0 && (
+                    <span className="flex items-center gap-2 ml-auto">
+                      <span>標的 {watchlist.length} 檔</span>
+                      {bullCount > 0 && <span className="text-success font-medium">看多 {bullCount}</span>}
+                      {bearCount > 0 && <span className="text-destructive font-medium">看空 {bearCount}</span>}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -362,7 +418,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
                 {keyPoints.map((point, i) => {
                   const { category, text } = parseKeyPoint(point);
                   return (
-                    <li key={i} className="flex gap-2 items-start">
+                    <li key={i} className="flex gap-2 items-start group">
                       <span className="flex-shrink-0 text-xs font-bold text-primary/60 mt-0.5 w-5 text-right">
                         {i + 1}.
                       </span>
@@ -374,9 +430,36 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
                         )}
                         <TickerText text={text} className="text-sm leading-relaxed" />
                       </div>
+                      <button
+                        onClick={() => handleCopy(point, `kp-${i}`)}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground mt-0.5"
+                        title="複製此重點"
+                      >
+                        {copiedField === `kp-${i}` ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+                      </button>
                     </li>
                   );
                 })}
+              </ul>
+            </section>
+          )}
+
+          {/* Action Items */}
+          {actionItems.length > 0 && (
+            <section className="rounded-lg border bg-card">
+              <div className="px-4 pt-4 pb-2">
+                <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Zap className="h-4 w-4 text-primary" />
+                  行動建議
+                </h2>
+              </div>
+              <ul className="px-4 pb-4 space-y-2">
+                {actionItems.map((item, i) => (
+                  <li key={i} className="flex gap-2 items-start">
+                    <span className="flex-shrink-0 text-primary font-bold leading-snug mt-0.5">→</span>
+                    <TickerText text={item} className="text-sm leading-relaxed" />
+                  </li>
+                ))}
               </ul>
             </section>
           )}
@@ -390,7 +473,7 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
               </h2>
               <div className="space-y-2">
                 {watchlist.map((item, i) => (
-                  <WatchlistCard key={i} item={item} />
+                  <WatchlistCard key={i} item={item} onSearch={handleTickerSearch} />
                 ))}
               </div>
             </section>

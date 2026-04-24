@@ -41,6 +41,7 @@ export interface SummaryResult {
   tags: string[];
   qa: QAItem[];
   watchlist: WatchlistItem[];
+  actionItems: string[];
 }
 
 // ============================================================
