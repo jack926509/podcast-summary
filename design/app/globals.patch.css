@@ -1,0 +1,22 @@
+/* app/globals.css 補丁 — 把這段加到原 :root / .dark 區塊內 */
+
+@layer base {
+  :root {
+    /* …既有 token 保留… */
+
+    /* 新增：sentiment / status 語意色 — 沿用既有暖色基底 */
+    --success: 148 60% 35%;
+    --success-foreground: 0 0% 100%;
+    --warning: 35 88% 48%;
+    --warning-foreground: 0 0% 100%;
+    --info: 210 65% 50%;
+    --info-foreground: 0 0% 100%;
+    /* destructive 已存在 */
+  }
+
+  .dark {
+    --success: 148 55% 55%;
+    --warning: 35 88% 60%;
+    --info: 210 70% 65%;
+  }
+}

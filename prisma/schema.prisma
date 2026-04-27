@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Podcast 節目（來自 RSS 或手動建立）
+model Podcast {
+  id             String    @id @default(cuid())
+  title          String
+  author         String?
+  feedUrl        String?   @unique
+  description    String?
+  imageUrl       String?
+  subscribed     Boolean   @default(false)
+  lastCheckedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  episodes       Episode[]
+}
+
+/// 單集節目
+model Episode {
+  id          String   @id @default(cuid())
+  podcastId   String
+  podcast     Podcast  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  title       String
+  audioUrl    String?          // RSS 來源的原始音檔 URL 或 /tmp 暫存路徑
+  duration    Int?             // 秒數
+  publishedAt DateTime?
+
+  // 處理狀態: pending | transcribing | summarizing | done | error
+  status      String   @default("pending")
+  errorMsg    String?
+  summaryMode String   @default("standard") // brief | standard | deep
+
+  transcript  String?          // Whisper 逐字稿（長文本）
+  summary     Summary?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([podcastId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([publishedAt])
+}
+
+/// AI 摘要結果
+model Summary {
+  id            String   @id @default(cuid())
+  episodeId     String   @unique
+  episode       Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  overview      String           // 整體摘要
+  sentiment     String?          // 看多 | 看空 | 中性
+  sentimentNote String?          // 一句話說明市場立場
+  keyPoints     Json             // JSON array: 分段重點
+  quotes        Json             // JSON array: 金句
+  tags          Json?            // JSON array: 自動標籤
+  qa            Json?            // JSON array: [{q, points[]}]
+  watchlist     Json?            // JSON array: [{name, ticker, market, sentiment, risk, event, viewpoint}]
+  actionItems   Json?            // JSON array: 行動建議
+
+  createdAt     DateTime @default(now())
+}

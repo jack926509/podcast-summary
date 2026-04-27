@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Podcast Summary — RWD Preview</title>
+<script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"Noto Sans TC"', 'Inter', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          bg: 'hsl(37 28% 97%)',
+          bg2: 'hsl(37 22% 93%)',
+          fg: 'hsl(25 25% 10%)',
+          muted: { DEFAULT: 'hsl(25 12% 50%)', soft: 'hsl(37 20% 94%)' },
+          border: { DEFAULT: 'hsl(37 18% 87%)', strong: 'hsl(37 18% 78%)' },
+          primary: { DEFAULT: 'hsl(18 68% 52%)', soft: 'hsl(18 68% 52% / .10)' },
+          success: { DEFAULT: 'hsl(148 60% 35%)', soft: 'hsl(148 60% 35% / .12)' },
+          warning: { DEFAULT: 'hsl(35 88% 48%)', soft: 'hsl(35 88% 48% / .14)' },
+          destructive: { DEFAULT: 'hsl(4 72% 51%)', soft: 'hsl(4 72% 51% / .12)' },
+          violet: { DEFAULT: 'hsl(265 60% 55%)', soft: 'hsl(265 60% 55% / .12)' },
+          info: { DEFAULT: 'hsl(210 65% 50%)', soft: 'hsl(210 65% 50% / .12)' },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html,body{background:hsl(37 28% 97%);color:hsl(25 25% 10%);font-family:"Noto Sans TC",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  /* hide scrollbars on horizontal tabstrip */
+  .no-scrollbar::-webkit-scrollbar{display:none}
+  .no-scrollbar{scrollbar-width:none}
+  /* sentiment rail helper */
+  .rail-bull{background:hsl(148 60% 35%)}
+  .rail-bear{background:hsl(4 72% 51%)}
+  .rail-neu{background:hsl(37 18% 78%)}
+  /* dot pulse */
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .dot-pulse{animation:pulse 1.6s infinite}
+  /* drop-cap on detail lede */
+  .drop-cap::first-letter{font-size:2.4em;float:left;font-weight:700;line-height:1;padding:.05em .1em 0 0;color:hsl(18 68% 52%)}
+  /* safe area helpers */
+  .safe-pb{padding-bottom:max(env(safe-area-inset-bottom),12px)}
+</style>
+</head>
+<body class="font-sans">
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+
+/* ===========================================================
+   MOCK DATA
+   =========================================================== */
+const STATS = {
+  total: 142,
+  monthAdded: 23,
+  monthDelta: +6,
+  byStatus: { done: 128, transcribing: 2, summarizing: 1, error: 11 },
+};
+
+const RECENT = [
+  { id:'214', t:'EP.214 美股財報週前瞻 — 半導體與 AI 概念再起', show:'投資先生', dur:'42 min', when:'14:22', ago:'3h', date:'04/24', status:'done',  sentiment:'bull', tickers:['NVDA','AVGO','AMD','TSM','SOXL'], bull:4, bear:1, cat:'市場觀點', tags:['#半導體','#AI','#財報季'], excerpt:'下週財報週開盤前觀察，NVDA、AVGO 法說重點與 AI 供應鏈…' },
+  { id:'M98',  t:'M觀點 #98 聯準會利率政策對台股的影響',           show:'財經M觀點', dur:'58 min', when:'12:08', ago:'5h', date:'04/23', status:'summarizing', sentiment:'neu', tickers:[], bull:0, bear:0, cat:'總經', tags:['#FOMC','#台股'], excerpt:'逐字稿已產生，AI 摘要分析中… 約 30 秒' },
+  { id:'213', t:'EP.213 巴菲特股東會重點整理',                   show:'投資先生', dur:'1h 12m', when:'昨', ago:'1d', date:'04/22', status:'done', sentiment:'bear', tickers:['BRK.B','AAPL','OXY'], bull:0, bear:2, cat:'投資策略', tags:['#巴菲特','#價值投資'], excerpt:'三大重點：現金部位創新高、能源股加碼、對 AI 的審慎觀點…' },
+  { id:'212', t:'市場放大鏡 PCE 數據解讀',                       show:'市場放大鏡', dur:'—', when:'昨', ago:'1d', date:'04/22', status:'error', sentiment:'neu', tickers:[], bull:0, bear:0, cat:'總經', tags:[], excerpt:'音檔下載失敗 — 請檢查 URL 後重試' },
+  { id:'211', t:'EP.211 從 ASML 法說看半導體設備循環',           show:'投資先生', dur:'48 min', when:'04/20', ago:'4d', date:'04/20', status:'done', sentiment:'bull', tickers:['ASML','LRCX','AMAT'], bull:3, bear:0, cat:'產業觀察', tags:['#半導體設備','#資本支出'], excerpt:'ASML 訂單能見度、China revenue 占比變化、EUV 出貨節奏…' },
+];
+
+const KEYPOINTS = [
+  { n:1, cat:'market',  catLabel:'市場觀點', body:'半導體類股短線修正提供買點，但須留意 [NVDA] 法說的「預期管理」效應 — 過去四季均出現 beat-and-fall 反應。' },
+  { n:2, cat:'data',    catLabel:'數據',     body:'費城半導體指數 [SOX] 年初至今 **+18%**，相對 [SPX] 多 6 個百分點。' },
+  { n:3, cat:'risk',    catLabel:'風險提示', body:'美中晶片管制 5 月升級可能性提高，[AMD]/[NVDA] 中國營收占比 12% 以上者首當其衝。' },
+  { n:4, cat:'strat',   catLabel:'策略',     body:'建議將 AI 概念部位從個股移轉至 [SOXX] / [SMH] ETF，分散單一公司財報風險。' },
+  { n:5, cat:'market',  catLabel:'市場觀點', body:'若 [NVDA] 法說後跌破 **$820** 支撐，可能觸發系統性 risk-off，連帶拖累 SPX 1–2%。' },
+  { n:6, cat:'data',    catLabel:'數據',     body:'Bloomberg 半導體分析師共識：Q2 EPS YoY +24%，已 price-in 高基期。' },
+  { n:7, cat:'risk',    catLabel:'風險提示', body:'地緣政治：台海情勢若升溫，[TSM] ADR 短線承壓機率高。' },
+  { n:8, cat:'strat',   catLabel:'策略',     body:'AI 供應鏈關注：散熱（Vertiv）、HBM（SK Hynix、Micron）、CoWoS 產能（[TSM]）。' },
+];
+
+const WATCHLIST = [
+  { sym:'NVDA',  name:'NVIDIA',     view:'bull', target:'$1,050', note:'法說前布局' },
+  { sym:'AVGO',  name:'Broadcom',   view:'bull', target:'$1,420', note:'AI ASIC 訂單' },
+  { sym:'AMD',   name:'AMD',        view:'neu',  target:'$170',   note:'觀望' },
+  { sym:'TSM',   name:'TSMC ADR',   view:'bull', target:'$165',   note:'CoWoS 受惠' },
+  { sym:'SOXL',  name:'費半 3x',     view:'bear', target:'—',     note:'波動過大' },
+];
+
+const SENT_DOT = { bull:'rail-bull', bear:'rail-bear', neu:'rail-neu' };
+const STATUS_PILL = {
+  done:        { cls:'bg-success-soft text-success', label:'完成' },
+  transcribing:{ cls:'bg-info-soft text-info',       label:'轉錄中', dot:true },
+  summarizing: { cls:'bg-violet-soft text-violet',   label:'摘要中', dot:true },
+  error:       { cls:'bg-destructive-soft text-destructive', label:'錯誤' },
+};
+
+/* ===========================================================
+   PRIMITIVES (shadcn-flavor, plain Tailwind)
+   =========================================================== */
+function Pill({ children, cls='', dot=false }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${cls}`}>
+      {dot && <span className="dot-pulse h-1.5 w-1.5 rounded-full bg-current"/>}
+      {children}
+    </span>
+  );
+}
+
+function Tag({ children, variant='default' }) {
+  const v = {
+    default: 'bg-white border border-border text-[hsl(25_12%_38%)]',
+    cat:     'bg-primary-soft text-primary border-transparent',
+  }[variant];
+  return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${v}`}>{children}</span>;
+}
+
+function StatusPill({ status }) {
+  const s = STATUS_PILL[status] || STATUS_PILL.done;
+  return <Pill cls={s.cls} dot={s.dot}>{s.label}</Pill>;
+}
+
+/* renders [TICKER] as monospace mark and **bold** */
+function RichText({ text }) {
+  const parts = [];
+  let i = 0, key = 0;
+  const re = /\[([A-Z.\d]+)\]|\*\*([^*]+)\*\*/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > i) parts.push(text.slice(i, m.index));
+    if (m[1]) parts.push(<mark key={key++} className="rounded bg-warning-soft px-1 font-mono text-[.92em] font-semibold text-[#7a4d04]">{m[1]}</mark>);
+    else parts.push(<b key={key++} className="font-semibold text-fg">{m[2]}</b>);
+    i = m.index + m[0].length;
+  }
+  if (i < text.length) parts.push(text.slice(i));
+  return <>{parts}</>;
+}
+
+/* ===========================================================
+   APP SHELL — top app bar + bottom tab bar (mobile) / sidebar (desktop)
+   =========================================================== */
+function AppShell({ tab, setTab, page, setPage, onNew, children }) {
+  const tabs = [
+    { id:'home',    label:'首頁',  icon:'▦' },
+    { id:'history', label:'歷史',  icon:'⊕' },
+    { id:'fab',     label:'',      icon:'+',  fab:true },
+    { id:'subs',    label:'訂閱',  icon:'♡' },
+    { id:'more',    label:'更多',  icon:'≡' },
+  ];
+  return (
+    <div className="min-h-screen bg-bg">
+      {/* desktop sidebar */}
+      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 flex-col border-r border-border bg-bg2/60 backdrop-blur p-4 gap-1 z-30">
+        <div className="flex items-center gap-2 px-2 pb-4 mb-2 border-b border-border">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">🎧</div>
+          <div className="font-semibold tracking-tight">Podcast 摘要</div>
+        </div>
+        {tabs.filter(t => !t.fab).map(t => (
+          <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${tab===t.id?'bg-primary text-white shadow-sm':'text-[hsl(25_12%_30%)] hover:bg-bg'}`}>
+            <span className="w-5 text-center">{t.icon}</span>{t.label}
+          </button>
+        ))}
+        <button onClick={onNew} className="mt-3 flex items-center justify-center gap-2 rounded-lg border border-dashed border-primary/50 bg-primary-soft px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10">
+          <span>+</span>新增任務
+        </button>
+        <div className="mt-auto rounded-lg bg-white border border-border p-3 text-[11px] text-muted leading-relaxed">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted">v1.2 · 預覽</div>
+          <div className="mt-1 text-fg font-medium">RWD 設計實作</div>
+          <div>同一份元件，breakpoints (md:) 切換。</div>
+        </div>
+      </aside>
+
+      {/* mobile top app bar */}
+      <header className="md:hidden sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-bg2/85 backdrop-blur px-4 py-3">
+        <div className="grid h-7 w-7 place-items-center rounded-md bg-primary-soft text-primary text-sm">🎧</div>
+        <div className="font-semibold text-[15px] tracking-tight">Podcast 摘要</div>
+        <div className="ml-auto flex items-center gap-1 text-muted">
+          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-bg" aria-label="搜尋">⌕</button>
+        </div>
+      </header>
+
+      <main className="md:pl-60 pb-24 md:pb-6">
+        {children}
+      </main>
+
+      {/* mobile bottom tab bar */}
+      <nav className="md:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/90 backdrop-blur-xl safe-pb">
+        <div className="flex items-start justify-around px-3 pt-2">
+          {tabs.map(t => t.fab ? (
+            <button key={t.id} onClick={onNew} className="-mt-5 grid h-12 w-12 place-items-center rounded-2xl bg-primary text-white text-2xl font-light shadow-lg shadow-primary/30">+</button>
+          ) : (
+            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex flex-1 flex-col items-center gap-0.5 py-1 text-[10.5px] font-medium ${tab===t.id?'text-primary':'text-muted'}`}>
+              <span className="text-lg leading-none">{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+/* ===========================================================
+   DASHBOARD
+   =========================================================== */
+function Dashboard({ onOpen }) {
+  const s = STATS;
+  const total = Object.values(s.byStatus).reduce((a,b)=>a+b,0);
+  const seg = (key, color) => `${(s.byStatus[key]/total*100).toFixed(1)}%`;
+  return (
+    <div className="px-5 md:px-10 pt-6 md:pt-10 pb-10 max-w-6xl mx-auto">
+      {/* page hero */}
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">
+        <div>
+          <div className="font-mono text-[11px] uppercase tracking-[.18em] text-muted">Dashboard</div>
+          <h1 className="mt-1 text-[26px] md:text-[34px] leading-[1.15] font-bold tracking-tight text-balance">
+            <span className="font-mono text-primary tabular-nums">{s.total}</span> 集已歸檔，<span className="font-mono text-violet tabular-nums">{s.byStatus.summarizing+s.byStatus.transcribing}</span> 集處理中
+          </h1>
+          <p className="mt-2 text-[13.5px] text-muted max-w-prose">本月新增 {s.monthAdded} 集，比上月 +{s.monthDelta}。最近 7 天 4 集標記為「看多」。</p>
+        </div>
+        <div className="hidden md:flex items-center gap-2">
+          <button className="h-10 rounded-lg border border-border bg-white px-4 text-sm font-medium hover:bg-bg2">⌕ 搜尋集數</button>
+          <button onClick={onOpen} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-sm shadow-primary/20 hover:opacity-90">+ 新增任務</button>
+        </div>
+      </div>
+
+      {/* hero stat + breakdown */}
+      <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="md:col-span-1 rounded-2xl border border-border bg-white p-5">
+          <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted">本月新增</div>
+          <div className="mt-2 flex items-end gap-2">
+            <div className="text-[44px] leading-none font-bold tracking-tight tabular-nums">{s.monthAdded}</div>
+            <div className="pb-1 text-[13px] text-muted">集</div>
+          </div>
+          <div className="mt-2 text-[12px] text-success font-medium">↑ 比上月 +{s.monthDelta} 集</div>
+          <div className="mt-5 pt-4 border-t border-border space-y-2">
+            <div className="flex justify-between text-[11px] text-muted">
+              <span>處理狀態分佈</span>
+              <span className="text-fg font-mono font-semibold">{total}</span>
+            </div>
+            <div className="flex h-2 overflow-hidden rounded-full bg-muted-soft">
+              <i style={{width:seg('done')}}        className="block h-full bg-success"/>
+              <i style={{width:seg('transcribing')}}className="block h-full bg-info"/>
+              <i style={{width:seg('summarizing')}} className="block h-full bg-violet"/>
+              <i style={{width:seg('error')}}       className="block h-full bg-destructive"/>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+              <span className="text-success">● 完成 {s.byStatus.done}</span>
+              <span className="text-info">● 轉錄 {s.byStatus.transcribing}</span>
+              <span className="text-violet">● 摘要 {s.byStatus.summarizing}</span>
+              <span className="text-destructive">● 錯誤 {s.byStatus.error}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* timeline activity */}
+        <div className="md:col-span-2 rounded-2xl border border-border bg-white">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h3 className="text-[15px] font-semibold tracking-tight">最近活動</h3>
+            <button className="text-[12px] text-muted hover:text-primary">歷史 ›</button>
+          </div>
+          <ul>
+            {RECENT.slice(0,4).map(ep => (
+              <li key={ep.id} className="grid grid-cols-[60px_1fr_auto] gap-3 md:gap-5 items-center px-5 py-3 border-b border-border last:border-0 hover:bg-bg/60 cursor-pointer" onClick={()=>onOpen(ep)}>
+                <div className="text-right font-mono text-[10px] text-muted leading-tight">
+                  <div className="text-[13px] font-semibold text-fg tracking-tight">{ep.when}</div>
+                  <div>{ep.ago}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[13.5px] font-medium md:text-[14px]">{ep.t}</div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted">
+                    <span>{ep.show}</span>
+                    {ep.sentiment === 'bull' && <span className="rounded bg-success-soft px-1.5 py-0.5 font-medium text-success">看多</span>}
+                    {ep.sentiment === 'bear' && <span className="rounded bg-destructive-soft px-1.5 py-0.5 font-medium text-destructive">看空</span>}
+                    {ep.dur !== '—' && <span>{ep.dur}</span>}
+                  </div>
+                </div>
+                <StatusPill status={ep.status}/>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================================================
+   HISTORY (episode list)
+   =========================================================== */
+function HistoryPage({ onOpen }) {
+  const [filter, setFilter] = React.useState('all');
+  const [q, setQ] = React.useState('');
+  const filtered = RECENT.filter(ep => {
+    if (filter !== 'all' && ep.status !== filter) return false;
+    if (q && !ep.t.toLowerCase().includes(q.toLowerCase())) return false;
+    return true;
+  });
+  const segs = [
+    { id:'all',          label:'全部',    count:STATS.total },
+    { id:'done',         label:'完成',    count:STATS.byStatus.done },
+    { id:'summarizing',  label:'處理中', count:STATS.byStatus.summarizing+STATS.byStatus.transcribing },
+    { id:'error',        label:'錯誤',    count:STATS.byStatus.error },
+  ];
+  return (
+    <div>
+      {/* sticky header (works on both mobile and desktop) */}
+      <div className="sticky top-[57px] md:top-0 z-10 bg-bg/92 backdrop-blur border-b border-border">
+        <div className="px-5 md:px-10 py-3 md:py-5 max-w-6xl mx-auto">
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="text-[22px] md:text-[28px] font-bold tracking-tight">
+              歷史記錄 <span className="ml-1 font-mono text-[14px] md:text-[16px] text-muted font-medium">{STATS.total}</span>
+            </h1>
+            <div className="hidden md:flex items-center gap-2">
+              <button className="h-9 rounded-lg border border-border bg-white px-3 text-[13px]">↑↓ 排序</button>
+              <button className="h-9 rounded-lg bg-primary px-4 text-[13px] font-semibold text-white">+ 新增</button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-col md:flex-row md:items-center gap-3">
+            <div className="relative md:max-w-md md:flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">⌕</span>
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋標題、摘要、tickers…" className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"/>
+            </div>
+            <div className="inline-flex rounded-lg border border-border bg-white overflow-hidden text-[12px] divide-x divide-border md:ml-auto">
+              {segs.map(s => (
+                <button key={s.id} onClick={()=>setFilter(s.id)} className={`px-3 py-2 font-medium ${filter===s.id ? 'bg-fg text-white' : 'text-muted hover:bg-bg'}`}>
+                  {s.label} <span className="font-mono opacity-70">{s.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 md:px-10 py-4 md:py-6 max-w-6xl mx-auto space-y-2.5">
+        {filtered.map(ep => <EpisodeCard key={ep.id} ep={ep} onOpen={onOpen}/>)}
+        {filtered.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-white px-6 py-12 text-center text-muted text-[13px]">
+            沒有符合條件的集數。試試清除篩選 ↺
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EpisodeCard({ ep, onOpen }) {
+  const railCls = SENT_DOT[ep.sentiment] || SENT_DOT.neu;
+  return (
+    <article onClick={()=>onOpen(ep)} className="group grid grid-cols-[3px_1fr] overflow-hidden rounded-xl border border-border bg-white transition hover:border-border-strong hover:shadow-sm cursor-pointer">
+      <div className={railCls}/>
+      <div className="p-4 md:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="line-clamp-2 text-[14.5px] md:text-[15.5px] font-semibold leading-snug tracking-tight text-pretty">{ep.t}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted">
+              <b className="font-medium text-fg">{ep.show}</b>
+              <span>·</span><span>{ep.dur}</span>
+              <span>·</span><span className="font-mono">{ep.date}</span>
+            </div>
+          </div>
+          <StatusPill status={ep.status}/>
+        </div>
+
+        {ep.status === 'summarizing' || ep.status === 'transcribing' ? (
+          <div className="mt-2.5 text-[12px] italic text-muted">{ep.excerpt}</div>
+        ) : ep.status === 'error' ? (
+          <div className="mt-2.5 text-[12px] text-destructive">{ep.excerpt}</div>
+        ) : (
+          <p className="mt-2 text-[12.5px] leading-relaxed text-[hsl(25_12%_30%)] line-clamp-2">{ep.excerpt}</p>
+        )}
+
+        {ep.status === 'done' && (
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <Tag variant="cat">{ep.cat}</Tag>
+              {ep.tags.slice(0,3).map(t => <Tag key={t}>{t}</Tag>)}
+            </div>
+            {ep.tickers.length > 0 && (
+              <div className="hidden sm:flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted">
+                <span>標的 {ep.tickers.length}</span>
+                {ep.bull > 0 && <b className="text-success font-bold">▲{ep.bull}</b>}
+                {ep.bear > 0 && <b className="text-destructive font-bold">▼{ep.bear}</b>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* ===========================================================
+   EPISODE DETAIL
+   =========================================================== */
+const TABS = [
+  { id:'keypts', label:'重點', count:8 },
+  { id:'sum',    label:'摘要', count:null },
+  { id:'wl',     label:'標的', count:5 },
+  { id:'act',    label:'行動', count:3 },
+  { id:'qa',     label:'Q&A',  count:4 },
+  { id:'quote',  label:'金句', count:null },
+  { id:'tx',     label:'逐字稿', count:null },
+];
+
+function DetailPage({ ep, onBack }) {
+  const [tab, setTab] = React.useState('keypts');
+  const e = ep || RECENT[0];
+  return (
+    <div className="pb-28 md:pb-12">
+      {/* sticky nav row */}
+      <div className="sticky top-0 md:top-0 z-20 bg-white/92 backdrop-blur border-b border-border">
+        <div className="flex items-center justify-between px-5 md:px-10 py-3 md:py-4 max-w-5xl mx-auto">
+          <button onClick={onBack} className="text-[13px] font-medium text-primary hover:underline">‹ 歷史</button>
+          <div className="flex items-center gap-1 text-muted">
+            <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-bg" aria-label="搜尋">⌕</button>
+            <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-bg" aria-label="收藏">♡</button>
+            <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-bg" aria-label="更多">⋯</button>
+          </div>
+        </div>
+      </div>
+
+      {/* lede card */}
+      <div className="border-b border-border bg-white">
+        <div className="px-5 md:px-10 py-5 md:py-8 max-w-5xl mx-auto">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[.16em] text-muted">
+            <span className="text-primary">{e.cat}</span>
+            <span>· EP.{e.id}</span>
+            {e.sentiment === 'bull' && <Pill cls="bg-success-soft text-success ml-auto normal-case tracking-normal">↑ 看多</Pill>}
+            {e.sentiment === 'bear' && <Pill cls="bg-destructive-soft text-destructive ml-auto normal-case tracking-normal">↓ 看空</Pill>}
+          </div>
+          <h1 className="mt-3 text-[22px] md:text-[34px] font-bold leading-[1.2] tracking-tight text-balance">{e.t}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted">
+            <b className="font-medium text-fg">{e.show}</b>
+            <span>· {e.date} · {e.dur}</span>
+            {e.tickers.length > 0 && <span>· {e.tickers.length} 標的 · {e.bull} 看多 {e.bear} 看空</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="md:max-w-5xl mx-auto md:px-10 md:grid md:grid-cols-[1fr_240px] md:gap-10 md:pt-8">
+        {/* main content */}
+        <div className="min-w-0">
+          {/* tab strip */}
+          <div className="sticky top-[56px] md:top-0 z-10 -mx-5 md:mx-0 border-b border-border bg-white/92 backdrop-blur md:rounded-t-xl">
+            <div className="no-scrollbar flex overflow-x-auto md:overflow-visible px-5 md:px-0">
+              {TABS.map(t => (
+                <button key={t.id} onClick={()=>setTab(t.id)} className={`relative shrink-0 px-3.5 py-2.5 text-[12.5px] md:text-[13px] font-medium whitespace-nowrap transition ${tab===t.id?'text-primary font-semibold':'text-muted hover:text-fg'}`}>
+                  {t.label}{t.count != null && <span className={`ml-1 font-mono text-[10px] ${tab===t.id?'text-primary':'text-muted'}`}>{t.count}</span>}
+                  {tab===t.id && <span className="absolute inset-x-3.5 bottom-0 h-0.5 rounded bg-primary"/>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* tab body */}
+          <div className="px-5 md:px-0 py-6">
+            {tab === 'keypts' && (
+              <ol className="space-y-6">
+                {KEYPOINTS.map(k => (
+                  <li key={k.n} className="grid grid-cols-[40px_1fr] md:grid-cols-[60px_1fr] gap-3 md:gap-5">
+                    <div className="text-right font-mono text-[10px] text-muted">
+                      <div className="text-[15px] md:text-[18px] font-semibold text-primary tracking-tight">{String(k.n).padStart(2,'0')}</div>
+                    </div>
+                    <div>
+                      <CatBadge cat={k.cat}>{k.catLabel}</CatBadge>
+                      <p className="mt-1.5 text-[13.5px] md:text-[15px] leading-[1.7] text-[hsl(25_12%_22%)] text-pretty"><RichText text={k.body}/></p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {tab === 'sum' && (
+              <article className="prose prose-sm md:prose-base max-w-none">
+                <p className="drop-cap text-[14px] md:text-[16px] leading-[1.85] text-[hsl(25_12%_22%)]">本集聚焦下週財報週開盤前的市場觀察。主持人首先回顧本週半導體類股的修正幅度，並將其歸因於 AI 資本支出疑慮以及對中國晶片管制升級的預期。在這個背景下，NVDA 的法說會將是下週最重要的市場事件。</p>
+                <p className="text-[14px] md:text-[16px] leading-[1.85] text-[hsl(25_12%_22%)]">主持人提醒聽眾留意「預期管理」效應 — 過去四個季度，NVDA 雖然 EPS 都優於預期，但盤後反應卻出現 beat-and-fall。原因在於市場已將高成長 price-in，任何 guidance 不及預期都會引發獲利了結。</p>
+              </article>
+            )}
+            {tab === 'wl' && (
+              <div className="overflow-hidden rounded-xl border border-border bg-white">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-bg2 text-[11px] uppercase tracking-wider text-muted">
+                    <tr><th className="px-4 py-2 text-left font-medium">標的</th><th className="px-4 py-2 text-left font-medium">立場</th><th className="hidden md:table-cell px-4 py-2 text-left font-medium">目標價</th><th className="px-4 py-2 text-left font-medium">備註</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {WATCHLIST.map(w => (
+                      <tr key={w.sym}>
+                        <td className="px-4 py-3"><span className="font-mono font-semibold">{w.sym}</span><span className="ml-2 hidden md:inline text-[11.5px] text-muted">{w.name}</span></td>
+                        <td className="px-4 py-3">{w.view==='bull'?<span className="text-success font-medium">▲ 看多</span>:w.view==='bear'?<span className="text-destructive font-medium">▼ 看空</span>:<span className="text-muted">— 中性</span>}</td>
+                        <td className="hidden md:table-cell px-4 py-3 font-mono">{w.target}</td>
+                        <td className="px-4 py-3 text-muted">{w.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {(tab==='act' || tab==='qa' || tab==='quote' || tab==='tx') && (
+              <div className="rounded-xl border border-dashed border-border bg-white px-6 py-16 text-center text-muted text-[13px]">
+                <div className="font-mono uppercase tracking-widest text-[11px]">{TABS.find(t=>t.id===tab)?.label}</div>
+                <div className="mt-2">此分頁內容（同樣的渲染邏輯）</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* desktop sidebar */}
+        <aside className="hidden md:block">
+          <div className="sticky top-24 space-y-4 pt-6">
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted">市場立場</div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-success text-2xl">↑</span>
+                <span className="text-[16px] font-semibold text-success">看多</span>
+              </div>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-muted">主持人對半導體類股短線給出 buy-the-dip 訊號，但點出 NVDA 法說可能引發系統性風險。</p>
+            </div>
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[.18em] text-muted">
+                <span>Watchlist</span>
+                <span>{WATCHLIST.length}</span>
+              </div>
+              <ul className="mt-2 space-y-1.5">
+                {WATCHLIST.map(w => (
+                  <li key={w.sym} className="flex items-center justify-between text-[12.5px]">
+                    <span className="font-mono font-semibold">{w.sym}</span>
+                    {w.view==='bull'?<span className="text-success">▲</span>:w.view==='bear'?<span className="text-destructive">▼</span>:<span className="text-muted">—</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted">目錄</div>
+              <ul className="mt-2 space-y-1 text-[12.5px]">
+                {TABS.map(t => (
+                  <li key={t.id}><button onClick={()=>setTab(t.id)} className={`flex w-full items-center justify-between rounded px-2 py-1 ${tab===t.id?'bg-primary-soft text-primary font-semibold':'text-muted hover:text-fg'}`}>{t.label}{t.count!=null && <span className="font-mono text-[10px] opacity-70">{t.count}</span>}</button></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {/* mobile bottom action bar */}
+      <div className="md:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/92 backdrop-blur safe-pb">
+        <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
+          <button className="flex-1 h-11 rounded-lg border border-border bg-white text-[13px] font-semibold">⎘ 複製全文</button>
+          <button className="flex-1 h-11 rounded-lg bg-primary text-[13px] font-semibold text-white">↓ 匯出 MD</button>
+        </div>
+      </div>
+
+      {/* desktop floating action */}
+      <div className="hidden md:block fixed bottom-6 right-6 z-30">
+        <div className="flex items-center gap-2 rounded-full border border-border bg-white/95 backdrop-blur px-2 py-2 shadow-lg shadow-black/5">
+          <button className="h-9 rounded-full px-4 text-[12.5px] font-semibold hover:bg-bg2">⎘ 複製</button>
+          <button className="h-9 rounded-full bg-primary px-4 text-[12.5px] font-semibold text-white shadow-sm">↓ 匯出 MD</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatBadge({ cat, children }) {
+  const m = {
+    market: 'bg-primary-soft text-primary',
+    data:   'bg-warning-soft text-[#a16505]',
+    risk:   'bg-destructive-soft text-destructive',
+    strat:  'bg-violet-soft text-violet',
+  }[cat] || 'bg-muted-soft text-muted';
+  return <span className={`inline-flex font-mono text-[10px] tracking-[.1em] uppercase rounded px-1.5 py-0.5 font-semibold ${m}`}>{children}</span>;
+}
+
+/* ===========================================================
+   NEW TASK
+   =========================================================== */
+function NewPage({ onBack }) {
+  const [mode, setMode] = React.useState('upload');
+  return (
+    <div className="pb-28 md:pb-12">
+      <div className="sticky top-0 md:top-0 z-20 bg-bg/92 backdrop-blur border-b border-border">
+        <div className="flex items-center justify-between px-5 md:px-10 py-3 md:py-4 max-w-3xl mx-auto">
+          <button onClick={onBack} className="text-[13px] font-medium text-primary hover:underline">‹ 取消</button>
+          <div className="font-mono text-[11px] uppercase tracking-widest text-muted">新增任務</div>
+          <span className="w-12"/>
+        </div>
+      </div>
+
+      <div className="px-5 md:px-10 py-6 md:py-12 max-w-3xl mx-auto">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted">新增任務</div>
+          <h1 className="mt-1 text-[24px] md:text-[36px] font-bold leading-[1.15] tracking-tight text-balance">把音檔變成可搜尋的<br className="md:hidden"/>財經摘要</h1>
+        </div>
+
+        <div className="mt-6 inline-flex w-full md:w-auto rounded-xl border border-border bg-white p-1 gap-1">
+          {[{id:'upload',label:'📎 上傳音檔'},{id:'rss',label:'🔗 RSS / Apple'}].map(m => (
+            <button key={m.id} onClick={()=>setMode(m.id)} className={`flex-1 md:flex-none rounded-lg px-4 py-2.5 text-[13px] font-medium transition ${mode===m.id?'bg-primary text-white shadow-sm':'text-muted hover:text-fg'}`}>{m.label}</button>
+          ))}
+        </div>
+
+        {mode === 'upload' ? (
+          <div className="mt-5 rounded-2xl border-[1.5px] border-dashed border-primary/40 bg-primary/[.04] px-6 py-10 md:py-14 text-center">
+            <div className="mx-auto grid h-14 w-14 md:h-16 md:w-16 place-items-center rounded-2xl bg-white border border-border text-2xl text-primary">⇪</div>
+            <p className="mt-3 md:mt-4 text-[15px] md:text-[18px] font-bold tracking-tight">點此選擇音檔<span className="hidden md:inline"> 或拖放至此</span></p>
+            <p className="mt-1 text-[12px] md:text-[13px] text-muted">MP3 · WAV · M4A · OGG · 最大 500 MB</p>
+            <div className="mt-4 md:mt-5 font-mono text-[10px] uppercase tracking-widest text-muted">或</div>
+            <button className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-[12.5px] font-semibold">📁 從檔案 App</button>
+          </div>
+        ) : (
+          <div className="mt-5">
+            <label className="block text-[12px] font-medium text-muted">RSS Feed 網址</label>
+            <input placeholder="https://feeds.example.com/podcast.xml" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"/>
+            <div className="mt-2 text-[11.5px] text-muted">支援 Apple Podcasts URL — 系統會自動解析 RSS。</div>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-start gap-2 rounded-lg bg-muted-soft px-4 py-3 text-[12px] text-muted leading-relaxed">
+          <span className="text-primary not-italic font-bold">ⓘ</span>
+          <div>音檔超過 25 MB 會自動分段轉錄，整段約需 2–5 分鐘。處理期間可關閉 App，完成後會在 Dashboard 顯示。</div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="block text-[12px] font-medium text-muted">集數標題（選填）</label>
+            <input placeholder="未填寫將使用檔名" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px]"/>
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-muted">分類</label>
+            <select className="mt-1.5 h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px]">
+              <option>市場觀點</option><option>總經</option><option>產業觀察</option><option>投資策略</option>
+            </select>
+          </div>
+        </div>
+
+        {/* desktop submit */}
+        <div className="hidden md:flex mt-8 gap-3 justify-end">
+          <button onClick={onBack} className="h-11 rounded-lg border border-border bg-white px-5 text-[13px] font-semibold">取消</button>
+          <button className="h-11 rounded-lg bg-primary px-6 text-[13px] font-semibold text-white shadow-sm shadow-primary/20">開始處理 →</button>
+        </div>
+      </div>
+
+      {/* mobile sticky submit */}
+      <div className="md:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/92 backdrop-blur safe-pb">
+        <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
+          <button onClick={onBack} className="flex-1 h-11 rounded-lg border border-border bg-white text-[13px] font-semibold">取消</button>
+          <button className="flex-[2] h-11 rounded-lg bg-primary text-[13px] font-semibold text-white">開始處理 →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================================================
+   ROOT
+   =========================================================== */
+function App() {
+  const [tab, setTab] = React.useState('home');
+  const [page, setPage] = React.useState('home'); // 'home' | 'history' | 'detail' | 'new'
+  const [ep, setEp] = React.useState(null);
+
+  const openEp = (e) => { setEp(e); setPage('detail'); };
+  const onTab = (t) => { setTab(t); if (t==='home') setPage('home'); if (t==='history') setPage('history'); };
+  const onNew = () => setPage('new');
+
+  return (
+    <AppShell tab={tab} setTab={onTab} page={page} setPage={setPage} onNew={onNew}>
+      {page === 'home' && <Dashboard onOpen={openEp}/>}
+      {page === 'history' && <HistoryPage onOpen={openEp}/>}
+      {page === 'detail' && <DetailPage ep={ep} onBack={()=>{setPage('history'); setTab('history');}}/>}
+      {page === 'new' && <NewPage onBack={()=>setPage(tab==='history'?'history':'home')}/>}
+    </AppShell>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
