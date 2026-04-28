@@ -33,7 +33,6 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig = {
-  output: 'standalone',
   webpack(config) {
     // Explicitly resolve the @ alias to the project root.
     // This is required because Next.js 14 + Docker/Nixpacks builds can sometimes
