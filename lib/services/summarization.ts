@@ -10,95 +10,116 @@ const MODEL_FAST = 'claude-haiku-4-5';
 const TICKER_FORMAT_RULE = `- 美股代號統一寫成 $NVDA、$AAPL、$TSLA 格式（代號前加 $）
 - 台股代號統一寫成 2330（台積電）格式（4位數字後接公司名）`;
 
-const WATCHLIST_SCHEMA = `  "watchlist": [
-    {
-      "name": "公司或標的名稱",
-      "ticker": "$NVDA 或 2330（台積電）格式，無代號填 null",
-      "market": "美股|台股|港股|其他",
-      "sentiment": "看多|看空|中性|觀望",
-      "risk": "高|中|低",
-      "event": "近期事件或催化劑（30-80字）",
-      "viewpoint": "主持人/分析師的觀點與操作建議（30-80字）"
-    }
-  ]`;
+/**
+ * Tool that Claude must call to submit the structured summary.
+ * Using tool_use guarantees valid JSON — far more reliable than asking
+ * Claude to output free-form JSON in long deep-mode responses.
+ */
+const SUMMARY_TOOL: Anthropic.Tool = {
+  name: 'submit_summary',
+  description: '提交結構化的 Podcast 摘要結果',
+  input_schema: {
+    type: 'object',
+    properties: {
+      overview: {
+        type: 'string',
+        description: '完整摘要文字（依模式長度不同：brief 100-150字、standard 300-500字、deep 500-800字）',
+      },
+      sentiment: {
+        type: 'string',
+        enum: ['看多', '看空', '中性'],
+        description: '本集整體市場立場；非財經內容請省略此欄位',
+      },
+      sentimentNote: {
+        type: 'string',
+        description: '一句話說明立場依據（15-30字）；非財經請省略',
+      },
+      keyPoints: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '重點清單，每條以【類別】開頭，類別範例：【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】',
+      },
+      quotes: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '原文金句或精彩見解',
+      },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '主題標籤，涵蓋產業、概念、地區、人名等',
+      },
+      actionItems: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '聽完本集後明確可執行的建議（20-60字）；無建議填空陣列',
+      },
+      qa: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            q: { type: 'string', description: '問題或討論主題（精簡為一句話）' },
+            points: { type: 'array', items: { type: 'string' }, description: '關鍵回答要點' },
+          },
+          required: ['q', 'points'],
+        },
+        description: 'Q&A 或問答討論段落；無則空陣列',
+      },
+      watchlist: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: '公司或標的名稱' },
+            ticker: { type: 'string', description: '$NVDA 或 2330（台積電）格式；無代號則省略' },
+            market: { type: 'string', enum: ['美股', '台股', '港股', '其他'] },
+            sentiment: { type: 'string', enum: ['看多', '看空', '中性', '觀望'] },
+            risk: { type: 'string', enum: ['高', '中', '低'] },
+            event: { type: 'string', description: '近期事件或催化劑（30-80字）' },
+            viewpoint: { type: 'string', description: '主持人/分析師的觀點與操作建議（30-80字）' },
+          },
+          required: ['name', 'market', 'sentiment', 'risk', 'event', 'viewpoint'],
+        },
+        description: '所有被分析的股票/公司/標的；無則空陣列',
+      },
+    },
+    required: ['overview', 'keyPoints', 'quotes', 'tags', 'actionItems', 'qa', 'watchlist'],
+  },
+};
 
-const QA_SCHEMA = `  "qa": [
-    {
-      "q": "問題或討論主題（精簡為一句話）",
-      "points": ["關鍵回答要點1", "要點2", "要點3"]
-    }
-  ]`;
+const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。請仔細分析逐字稿，提取對投資者與知識學習者最有價值的資訊，並透過 submit_summary 工具以繁體中文回填結果。
 
-const SYSTEM_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。請仔細分析逐字稿，提取對投資者與知識學習者最有價值的資訊，以繁體中文回應。
-
-只輸出以下格式的有效 JSON，不包含任何其他文字或 markdown：
-
-{
-  "overview": "3-4 段完整摘要，含本集核心主題、重要結論與值得關注的觀點",
-  "sentiment": "看多|看空|中性（依本集整體市場立場判斷；非財經內容填 null）",
-  "sentimentNote": "一句話說明市場立場依據（15-30字；非財經填 null）",
-  "keyPoints": [
-    "【類別】具體重點，盡量包含數字、名稱或可行動的資訊",
-    "..."
-  ],
-  "quotes": ["原文金句或精彩見解（保留講者語氣）"],
-  "tags": ["主題標籤"],
-  "actionItems": ["明確可執行的行動建議（20-60字）"],
-${QA_SCHEMA},
-${WATCHLIST_SCHEMA}
-}
-
-規則：
-- overview：300-500 字，依序涵蓋：背景脈絡 → 核心論點 → 重要數字或案例 → 結論與啟示
-- sentiment：看多（整體偏多/樂觀）/ 看空（整體偏空/悲觀）/ 中性（平衡或不確定），非財經內容填 null
-- keyPoints：6-10 條，每條以【類別】開頭，類別範例：
-  【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】
-- quotes：3-5 個最有洞見、最值得記錄的原文語句
-- tags：4-8 個精準標籤，涵蓋產業、概念、地區、人名等維度
-- actionItems：2-4 條聽完本集後明確可執行的建議，例如「留意下週 $NVDA 財報」「觀察某指標是否突破」「考慮分批佈局某標的」；非財經或無明確建議時填空陣列 []
-- qa：若有 Q&A 或問答討論段落則提取（無則空陣列 []）；每題 2-4 個要點
-- watchlist：提取所有被分析的股票/公司/標的（無則空陣列 []）；event 寫客觀事件，viewpoint 寫主觀觀點
-- 所有內容使用繁體中文
+內容要求：
+- overview：300-500 字，依序涵蓋背景脈絡 → 核心論點 → 重要數字或案例 → 結論與啟示
+- sentiment：依本集整體市場立場填看多 / 看空 / 中性；非財經內容請省略此欄位
+- keyPoints：6-10 條，每條以【類別】開頭
+- quotes：3-5 個最有洞見、最值得記錄的原文金句
+- tags：4-8 個精準標籤
+- actionItems：2-4 條明確可執行的建議；非財經或無建議時填空陣列
+- qa：若有 Q&A 段落則提取，每題 2-4 個要點
+- watchlist：提取所有被分析的股票/公司/標的
 ${TICKER_FORMAT_RULE}`;
 
-const CHUNK_PROMPT = `你是內容摘要助理。請簡潔摘要以下 Podcast 片段，以繁體中文輸出有效 JSON：
+const CHUNK_PROMPT = `你是內容摘要助理。請簡潔摘要以下 Podcast 片段，透過 submit_summary 工具以繁體中文回填：
+- overview：本片段核心內容（100-200 字）
+- keyPoints：3-6 條重點
+- quotes：1-2 個金句
+- tags：2-4 個標籤
+- actionItems / qa / watchlist：本階段請填空陣列（最終整合階段才處理）`;
 
-{
-  "overview": "此片段的核心內容（100-200 字）",
-  "keyPoints": ["重點1", "重點2"],
-  "quotes": ["金句"],
-  "tags": ["標籤"],
-  "qa": [],
-  "watchlist": []
-}`;
+const SYNTHESIS_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。以下是同一集 Podcast 各片段的初步摘要，請整合成一份完整、高品質的最終摘要，透過 submit_summary 工具以繁體中文回填。
 
-const SYNTHESIS_PROMPT = `你是一位專業的財經與知識型 Podcast 摘要專家。以下是同一集 Podcast 各片段的初步摘要，請整合成一份完整、高品質的最終摘要。
-
-只輸出以下格式的有效 JSON：
-
-{
-  "overview": "3-4 段完整摘要，含核心主題、重要結論、值得關注的觀點",
-  "sentiment": "看多|看空|中性（依整集整體市場立場；非財經填 null）",
-  "sentimentNote": "一句話說明立場依據（15-30字；非財經填 null）",
-  "keyPoints": [
-    "【類別】具體重點（含數字/名稱/可行動資訊）"
-  ],
-  "quotes": ["最值得記錄的原文金句"],
-  "tags": ["精準主題標籤"],
-  "actionItems": ["明確可執行的行動建議（20-60字）"],
-${QA_SCHEMA},
-${WATCHLIST_SCHEMA}
-}
-
-規則：
+內容要求：
 - overview：300-500 字，背景脈絡 → 核心論點 → 重要數字/案例 → 結論與啟示
-- keyPoints：6-10 條，以【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【操作建議】等類別開頭
+- keyPoints：6-10 條，以類別【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【操作建議】等開頭
 - quotes：3-5 個最有洞見的原文語句
-- tags：4-8 個涵蓋產業、概念、地區、人名的精準標籤
-- actionItems：2-4 條聽完本集後明確可執行的建議；非財經或無明確建議時填空陣列 []
-- qa：整合各片段中的 Q&A 討論；無則空陣列
+- tags：4-8 個精準標籤
+- actionItems：2-4 條明確可執行建議；非財經或無建議時填空陣列
+- qa：整合各片段 Q&A 討論；無則空陣列
 - watchlist：整合各片段提及的所有股票/公司分析；無則空陣列
-- 去除重複資訊，保留最有價值的內容`;
+- 去除重複資訊，保留最有價值的內容
+${TICKER_FORMAT_RULE}`;
 
 /**
  * Run async tasks with a bounded concurrency limit.
@@ -154,20 +175,10 @@ function chunkTranscript(transcript: string, maxChars: number): string[] {
   return chunks;
 }
 
-/** Extract JSON object from Claude response (handles markdown code blocks) */
-function extractJson(text: string): SummaryResult {
-  const stripped = text.replace(/```(?:json)?\n?/g, '').trim();
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON object found in Claude response');
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch (e) {
-    throw new Error(`Failed to parse Claude JSON: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  const qa: QAItem[] = Array.isArray(parsed.qa)
-    ? parsed.qa
+/** Convert Claude tool_use input into our SummaryResult shape with safe defaults. */
+function normalizeSummary(input: Record<string, unknown>): SummaryResult {
+  const qa: QAItem[] = Array.isArray(input.qa)
+    ? input.qa
         .filter((item: unknown): item is Record<string, unknown> =>
           typeof item === 'object' && item !== null && 'q' in item,
         )
@@ -177,8 +188,8 @@ function extractJson(text: string): SummaryResult {
         }))
     : [];
 
-  const watchlist: WatchlistItem[] = Array.isArray(parsed.watchlist)
-    ? parsed.watchlist
+  const watchlist: WatchlistItem[] = Array.isArray(input.watchlist)
+    ? input.watchlist
         .filter((item: unknown): item is Record<string, unknown> =>
           typeof item === 'object' && item !== null && 'name' in item,
         )
@@ -193,20 +204,16 @@ function extractJson(text: string): SummaryResult {
         }))
     : [];
 
-  const actionItems: string[] = Array.isArray(parsed.actionItems)
-    ? parsed.actionItems.map(String)
-    : [];
-
   return {
-    overview: String(parsed.overview ?? ''),
-    sentiment: parsed.sentiment && parsed.sentiment !== 'null' ? String(parsed.sentiment) : null,
-    sentimentNote: parsed.sentimentNote && parsed.sentimentNote !== 'null' ? String(parsed.sentimentNote) : null,
-    keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(String) : [],
-    quotes: Array.isArray(parsed.quotes) ? parsed.quotes.map(String) : [],
-    tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [],
+    overview: String(input.overview ?? ''),
+    sentiment: input.sentiment ? String(input.sentiment) : null,
+    sentimentNote: input.sentimentNote ? String(input.sentimentNote) : null,
+    keyPoints: Array.isArray(input.keyPoints) ? input.keyPoints.map(String) : [],
+    quotes: Array.isArray(input.quotes) ? input.quotes.map(String) : [],
+    tags: Array.isArray(input.tags) ? input.tags.map(String) : [],
     qa,
     watchlist,
-    actionItems,
+    actionItems: Array.isArray(input.actionItems) ? input.actionItems.map(String) : [],
   };
 }
 
@@ -243,28 +250,39 @@ async function callClaude(
     try {
       // Streaming path: emit key-points as they close so the UI shows live progress
       if (onKeyPoint) {
+        let inputJsonAccum = '';
         let emitted = 0;
         const stream = client.messages.stream({
           model,
           max_tokens: resolvedMaxTokens,
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
+          tools: [SUMMARY_TOOL],
+          tool_choice: { type: 'tool', name: SUMMARY_TOOL.name },
         });
-        stream.on('text', (_delta: string, snapshot: string) => {
-          const list = extractCompleteKeyPoints(snapshot);
-          if (list && list.length > emitted) {
-            const fresh = list.slice(emitted);
-            emitted = list.length;
-            for (const kp of fresh) {
-              // Fire-and-forget — don't block the stream pump
-              Promise.resolve(onKeyPoint(kp)).catch(() => undefined);
+        stream.on('streamEvent', (event) => {
+          if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'input_json_delta'
+          ) {
+            inputJsonAccum += event.delta.partial_json;
+            const list = extractCompleteKeyPoints(inputJsonAccum);
+            if (list && list.length > emitted) {
+              const fresh = list.slice(emitted);
+              emitted = list.length;
+              for (const kp of fresh) {
+                Promise.resolve(onKeyPoint(kp)).catch(() => undefined);
+              }
             }
           }
         });
         const finalMsg = await stream.finalMessage();
-        const text = finalMsg.content[0]?.type === 'text' ? finalMsg.content[0].text : '';
+        const block = finalMsg.content.find((b: Anthropic.ContentBlock) => b.type === 'tool_use');
+        if (!block || block.type !== 'tool_use') {
+          throw new Error('Claude response missing tool_use block');
+        }
         return {
-          result: extractJson(text),
+          result: normalizeSummary(block.input as Record<string, unknown>),
           inputTokens: finalMsg.usage?.input_tokens ?? 0,
           outputTokens: finalMsg.usage?.output_tokens ?? 0,
           model,
@@ -276,12 +294,16 @@ async function callClaude(
         max_tokens: resolvedMaxTokens,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
+        tools: [SUMMARY_TOOL],
+        tool_choice: { type: 'tool', name: SUMMARY_TOOL.name },
       });
 
-      const text =
-        response.content[0].type === 'text' ? response.content[0].text : '';
+      const block = response.content.find((b) => b.type === 'tool_use');
+      if (!block || block.type !== 'tool_use') {
+        throw new Error('Claude response missing tool_use block');
+      }
       return {
-        result: extractJson(text),
+        result: normalizeSummary(block.input as Record<string, unknown>),
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
         model,
@@ -300,46 +322,22 @@ async function callClaude(
 export type SummaryMode = 'brief' | 'standard' | 'deep';
 
 const MODE_SYSTEM_PROMPTS: Record<SummaryMode, string> = {
-  brief: `你是一位專業的財經 Podcast 摘要助理。請快速提取本集最核心的 3 個重點，以繁體中文輸出。
-
-只輸出有效 JSON：
-{
-  "overview": "1-2 段簡短摘要（100-150 字），只含最重要的結論",
-  "sentiment": "看多|看空|中性|null",
-  "sentimentNote": "一句話（15-30字）|null",
-  "keyPoints": ["【類別】重點1", "【類別】重點2", "【類別】重點3"],
-  "quotes": ["1 個最值得記錄的金句"],
-  "tags": ["標籤1", "標籤2", "標籤3"],
-  "qa": [],
-  "watchlist": []
-}
+  brief: `你是一位專業的財經 Podcast 摘要助理。請快速提取本集最核心的 3 個重點，透過 submit_summary 工具以繁體中文回填：
+- overview：1-2 段簡短摘要（100-150 字），只含最重要的結論
+- keyPoints：3 條，以【類別】開頭
+- quotes：1 個最值得記錄的金句
+- tags：3 個標籤
+- actionItems / qa / watchlist：填空陣列
 ${TICKER_FORMAT_RULE}`,
 
   standard: SYSTEM_PROMPT,
 
-  deep: `你是一位專業的財經與知識型 Podcast 深度分析師。請全面分析逐字稿，以繁體中文回應。
-
-只輸出有效 JSON：
-{
-  "overview": "4-5 段深度摘要（500-800 字），含背景脈絡、核心論點、數字佐證、市場影響、個人觀點",
-  "sentiment": "看多|看空|中性（依整集整體市場立場；非財經填 null）",
-  "sentimentNote": "一句話說明立場依據（15-30字；非財經填 null）",
-  "keyPoints": [
-    "【類別】具體重點（含數字、名稱、可行動資訊）"
-  ],
-  "quotes": ["最有洞見的原文語句"],
-  "tags": ["精準標籤"],
-  "actionItems": ["明確可執行的行動建議（20-60字）"],
-${QA_SCHEMA},
-${WATCHLIST_SCHEMA}
-}
-
-規則：
-- overview：500-800 字，深度分析包含：宏觀背景 → 核心論述 → 數據/案例支撐 → 市場影響 → 操作啟示
+  deep: `你是一位專業的財經與知識型 Podcast 深度分析師。請全面分析逐字稿，透過 submit_summary 工具以繁體中文回填：
+- overview：500-800 字深度摘要，依序涵蓋宏觀背景 → 核心論述 → 數據/案例支撐 → 市場影響 → 操作啟示
 - keyPoints：10-15 條，細分類別如【市場觀點】【投資策略】【數據】【趨勢】【風險提示】【概念解析】【產業動態】【操作建議】【反向觀點】【時間框架】
 - quotes：5-8 個最有洞見、最獨到的原文金句
 - tags：6-10 個涵蓋產業、概念、地區、人名、事件的精準標籤
-- actionItems：2-5 條明確可執行的深度行動建議；非財經或無明確建議時填空陣列 []
+- actionItems：2-5 條明確可執行的深度行動建議；非財經或無建議時填空陣列
 - qa：深度提取所有 Q&A 討論，每題 3-5 個要點
 - watchlist：完整分析所有提及的股票/公司，event 與 viewpoint 各 50-100字
 ${TICKER_FORMAT_RULE}`,
