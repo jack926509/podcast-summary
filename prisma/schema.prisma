@@ -38,7 +38,15 @@ model Episode {
   summaryMode String   @default("standard") // brief | standard | deep
 
   transcript  String?          // Whisper 逐字稿（長文本）
+  progressNote String?         // 處理中即時敘述（例：「轉錄中 (3/8)…」「整合摘要中…」）
   summary     Summary?
+
+  // 用量追蹤（item 3 用量看板）
+  transcribeProvider String?         // groq | openai
+  transcribeMinutes  Float?          // 音檔分鐘數
+  inputTokens        Int?            // Claude input token 累計
+  outputTokens       Int?            // Claude output token 累計
+  costUsd            Float?          // 本集處理總成本 (USD)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

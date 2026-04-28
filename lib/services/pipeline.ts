@@ -7,6 +7,7 @@ import { transcribeAudio } from './transcription';
 import { summarizeTranscript, type SummaryMode } from './summarization';
 import { EPISODE_STATUS, MAX_DOWNLOAD_BYTES } from '@/lib/constants';
 import { processingLimiter } from '@/lib/concurrency';
+import { transcribeCost, claudeCost, type TranscribeProvider } from '@/lib/pricing';
 
 // Private IP ranges that should not be accessible via SSRF
 const PRIVATE_IP_PATTERNS = [
@@ -163,10 +164,16 @@ export async function processEpisode(episodeId: string): Promise<void> {
     // Skip if transcript already exists (e.g. retrying after a summary failure)
     let transcript = episode.transcript ?? '';
 
+    const setProgress = (note: string) =>
+      prisma.episode
+        .update({ where: { id: episodeId }, data: { progressNote: note } })
+        .then(() => undefined)
+        .catch(() => undefined);
+
     if (!transcript) {
       await prisma.episode.update({
         where: { id: episodeId },
-        data: { status: EPISODE_STATUS.TRANSCRIBING },
+        data: { status: EPISODE_STATUS.TRANSCRIBING, progressNote: '準備轉錄…' },
       });
 
       if (!episode.audioUrl) {
@@ -176,28 +183,76 @@ export async function processEpisode(episodeId: string): Promise<void> {
       if (isLocalTmpPath(episode.audioUrl)) {
         tmpFilePath = episode.audioUrl;
       } else {
+        await setProgress('下載音檔中…');
         downloadedFile = await downloadRemoteFile(episode.audioUrl, episodeId);
         tmpFilePath = downloadedFile;
       }
 
       if (!tmpFilePath) throw new Error('No audio file path to transcribe');
-      transcript = await transcribeAudio(tmpFilePath);
+      const transcribeResult = await transcribeAudio(tmpFilePath, { onProgress: setProgress });
+      transcript = transcribeResult.text;
 
       await prisma.episode.update({
         where: { id: episodeId },
-        data: { transcript, status: EPISODE_STATUS.SUMMARIZING },
+        data: {
+          transcript,
+          status: EPISODE_STATUS.SUMMARIZING,
+          progressNote: '轉錄完成，準備分析重點…',
+          transcribeProvider: transcribeResult.provider,
+          transcribeMinutes: transcribeResult.durationSeconds / 60,
+        },
       });
     } else {
       // Transcript exists — jump straight to summarizing
       await prisma.episode.update({
         where: { id: episodeId },
-        data: { status: EPISODE_STATUS.SUMMARIZING },
+        data: { status: EPISODE_STATUS.SUMMARIZING, progressNote: '準備分析重點…' },
       });
     }
 
     // ── Step 2: Summarization ──────────────────────────────────────────────
     const mode = ((episode as unknown as { summaryMode?: string }).summaryMode ?? 'standard') as SummaryMode;
-    const summaryResult = await summarizeTranscript(transcript, mode);
+
+    // Stream key-points into the Summary row so the UI sees them appear live
+    const liveKeyPoints: string[] = [];
+    let liveWriteChain: Promise<unknown> = Promise.resolve();
+    const onKeyPoint = (kp: string) => {
+      liveKeyPoints.push(kp);
+      const snapshot = [...liveKeyPoints];
+      liveWriteChain = liveWriteChain
+        .then(() =>
+          prisma.summary.upsert({
+            where: { episodeId },
+            create: {
+              episodeId,
+              overview: '',
+              keyPoints: snapshot as unknown as Prisma.InputJsonArray,
+              quotes: [] as unknown as Prisma.InputJsonArray,
+            },
+            update: { keyPoints: snapshot as unknown as Prisma.InputJsonArray },
+          }),
+        )
+        .catch(() => undefined);
+    };
+
+    const { result: summaryResult, usage } = await summarizeTranscript(transcript, mode, {
+      onProgress: setProgress,
+      onKeyPoint,
+    });
+    // Wait for any pending live writes to flush before the final upsert
+    await liveWriteChain;
+
+    // Compute total cost: transcription + per-model Claude usage
+    const transcribeMinutes = (episode.transcribeMinutes ?? 0)
+      || ((await prisma.episode.findUnique({ where: { id: episodeId }, select: { transcribeMinutes: true } }))?.transcribeMinutes ?? 0);
+    const transcribeProvider = (episode.transcribeProvider ?? null) as TranscribeProvider | null;
+    let totalCost = 0;
+    if (transcribeProvider && transcribeMinutes > 0) {
+      totalCost += transcribeCost(transcribeProvider, transcribeMinutes);
+    }
+    for (const [model, t] of Object.entries(usage.byModel)) {
+      totalCost += claudeCost(model, t.input, t.output);
+    }
 
     // Use upsert so retries don't fail when a summary already exists
     await prisma.$transaction([
@@ -229,7 +284,14 @@ export async function processEpisode(episodeId: string): Promise<void> {
       }),
       prisma.episode.update({
         where: { id: episodeId },
-        data: { status: EPISODE_STATUS.DONE, errorMsg: null },
+        data: {
+          status: EPISODE_STATUS.DONE,
+          errorMsg: null,
+          progressNote: null,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          costUsd: totalCost,
+        },
       }),
     ]);
   } catch (error) {

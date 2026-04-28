@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { SummaryResult, QAItem, WatchlistItem } from '@/lib/types';
 import { TRANSCRIPT_CHUNK_CHARS } from '@/lib/constants';
+import { extractCompleteKeyPoints } from './stream-parse';
 
 // Sonnet for final (high-quality) output; Haiku for cheap chunk pre-processing
 const MODEL_QUALITY = 'claude-sonnet-4-6';
@@ -209,20 +210,67 @@ function extractJson(text: string): SummaryResult {
   };
 }
 
-/** Call Claude API with retry logic */
+interface ClaudeCallResult {
+  result: SummaryResult;
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+}
+
+interface ClaudeCallOptions {
+  retries?: number;
+  maxTokens?: number;
+  /**
+   * Called as Claude streams. Receives only newly-closed key-point strings so the
+   * caller can surface them to the UI before the full JSON document is valid.
+   */
+  onKeyPoint?: (keyPoint: string) => void | Promise<void>;
+}
+
+/** Call Claude API with retry logic, returning usage alongside parsed result */
 async function callClaude(
   client: Anthropic,
   model: string,
   systemPrompt: string,
   userContent: string,
-  retries = 3,
-  maxTokens?: number,
-): Promise<SummaryResult> {
+  options: ClaudeCallOptions = {},
+): Promise<ClaudeCallResult> {
+  const { retries = 3, maxTokens, onKeyPoint } = options;
   let lastError: Error | null = null;
   const resolvedMaxTokens = maxTokens ?? (model === MODEL_FAST ? 1024 : 2048);
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
+      // Streaming path: emit key-points as they close so the UI shows live progress
+      if (onKeyPoint) {
+        let emitted = 0;
+        const stream = client.messages.stream({
+          model,
+          max_tokens: resolvedMaxTokens,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }],
+        });
+        stream.on('text', (_delta: string, snapshot: string) => {
+          const list = extractCompleteKeyPoints(snapshot);
+          if (list && list.length > emitted) {
+            const fresh = list.slice(emitted);
+            emitted = list.length;
+            for (const kp of fresh) {
+              // Fire-and-forget — don't block the stream pump
+              Promise.resolve(onKeyPoint(kp)).catch(() => undefined);
+            }
+          }
+        });
+        const finalMsg = await stream.finalMessage();
+        const text = finalMsg.content[0]?.type === 'text' ? finalMsg.content[0].text : '';
+        return {
+          result: extractJson(text),
+          inputTokens: finalMsg.usage?.input_tokens ?? 0,
+          outputTokens: finalMsg.usage?.output_tokens ?? 0,
+          model,
+        };
+      }
+
       const response = await client.messages.create({
         model,
         max_tokens: resolvedMaxTokens,
@@ -232,7 +280,12 @@ async function callClaude(
 
       const text =
         response.content[0].type === 'text' ? response.content[0].text : '';
-      return extractJson(text);
+      return {
+        result: extractJson(text),
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        model,
+      };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < retries - 1) {
@@ -302,20 +355,65 @@ ${TICKER_FORMAT_RULE}`,
  * This keeps quality high for the output users actually read,
  * while minimising token cost on bulk chunk pre-processing.
  */
-export async function summarizeTranscript(transcript: string, mode: SummaryMode = 'standard'): Promise<SummaryResult> {
+export interface SummarizeOptions {
+  onProgress?: (note: string) => void | Promise<void>;
+  /** Called once per newly-completed key-point during streaming */
+  onKeyPoint?: (keyPoint: string) => void | Promise<void>;
+}
+
+export interface SummarizeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** 各 model 累計 token：用於後續更精準的成本計算 */
+  byModel: Record<string, { input: number; output: number }>;
+}
+
+export interface SummarizeOutcome {
+  result: SummaryResult;
+  usage: SummarizeUsage;
+}
+
+function emptyUsage(): SummarizeUsage {
+  return { inputTokens: 0, outputTokens: 0, byModel: {} };
+}
+
+function addUsage(acc: SummarizeUsage, call: ClaudeCallResult): void {
+  acc.inputTokens += call.inputTokens;
+  acc.outputTokens += call.outputTokens;
+  const slot = acc.byModel[call.model] ?? { input: 0, output: 0 };
+  slot.input += call.inputTokens;
+  slot.output += call.outputTokens;
+  acc.byModel[call.model] = slot;
+}
+
+export async function summarizeTranscript(
+  transcript: string,
+  mode: SummaryMode = 'standard',
+  options: SummarizeOptions = {},
+): Promise<SummarizeOutcome> {
+  const { onProgress, onKeyPoint } = options;
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const systemPrompt = MODE_SYSTEM_PROMPTS[mode] ?? SYSTEM_PROMPT;
   // brief mode: always single-call Sonnet (short output anyway)
   const maxTokens = mode === 'brief' ? 1024 : mode === 'deep' ? 4096 : 2048;
 
+  const usage = emptyUsage();
+
   if (transcript.length <= TRANSCRIPT_CHUNK_CHARS * 2 || mode === 'brief') {
-    // Short enough (or brief mode) — use Sonnet directly for best quality
-    return callClaude(client, MODEL_QUALITY, systemPrompt, transcript, 3, maxTokens);
+    // Short enough (or brief mode) — single Sonnet call, stream key-points live
+    await onProgress?.('生成摘要中…');
+    const call = await callClaude(client, MODEL_QUALITY, systemPrompt, transcript, {
+      maxTokens,
+      onKeyPoint,
+    });
+    addUsage(usage, call);
+    return { result: call.result, usage };
   }
 
-  // Map phase: cheap Haiku per chunk — parallelised (max 3 concurrent)
+  // Map phase: cheap Haiku per chunk — parallelised (max 3 concurrent), no streaming
   const chunks = chunkTranscript(transcript, TRANSCRIPT_CHUNK_CHARS);
-  const chunkSummaries = await parallelMap(
+  await onProgress?.(`分析片段中（共 ${chunks.length} 段）…`);
+  const chunkCalls = await parallelMap(
     chunks,
     (chunk) =>
       callClaude(
@@ -326,6 +424,8 @@ export async function summarizeTranscript(transcript: string, mode: SummaryMode 
       ),
     3,
   );
+  for (const call of chunkCalls) addUsage(usage, call);
+  const chunkSummaries = chunkCalls.map((c) => c.result);
 
   // Reduce phase: Sonnet synthesises into the final high-quality summary
   const combinedText = chunkSummaries
@@ -336,24 +436,29 @@ export async function summarizeTranscript(transcript: string, mode: SummaryMode 
   const allQuotes = chunkSummaries.flatMap((s) => s.quotes);
   const allTags = Array.from(new Set(chunkSummaries.flatMap((s) => s.tags)));
 
-  const finalSummary = await callClaude(
+  await onProgress?.('整合最終摘要中…');
+  const finalCall = await callClaude(
     client,
     MODEL_QUALITY,
     SYNTHESIS_PROMPT,
     `請整合以下各片段摘要，生成完整的最終摘要：\n\n${combinedText}\n\n收集到的重點：\n${allKeyPoints.join('\n')}\n\n收集到的金句：\n${allQuotes.join('\n')}\n\n收集到的標籤：${allTags.join('、')}`,
-    3,
-    maxTokens,
+    { maxTokens, onKeyPoint },
   );
+  addUsage(usage, finalCall);
+  const finalSummary = finalCall.result;
 
   return {
-    overview: finalSummary.overview,
-    sentiment: finalSummary.sentiment,
-    sentimentNote: finalSummary.sentimentNote,
-    keyPoints: finalSummary.keyPoints.length > 0 ? finalSummary.keyPoints : allKeyPoints.slice(0, 10),
-    quotes: finalSummary.quotes.length > 0 ? finalSummary.quotes : allQuotes.slice(0, 6),
-    tags: finalSummary.tags.length > 0 ? finalSummary.tags : allTags.slice(0, 8),
-    qa: finalSummary.qa,
-    watchlist: finalSummary.watchlist,
-    actionItems: finalSummary.actionItems,
+    result: {
+      overview: finalSummary.overview,
+      sentiment: finalSummary.sentiment,
+      sentimentNote: finalSummary.sentimentNote,
+      keyPoints: finalSummary.keyPoints.length > 0 ? finalSummary.keyPoints : allKeyPoints.slice(0, 10),
+      quotes: finalSummary.quotes.length > 0 ? finalSummary.quotes : allQuotes.slice(0, 6),
+      tags: finalSummary.tags.length > 0 ? finalSummary.tags : allTags.slice(0, 8),
+      qa: finalSummary.qa,
+      watchlist: finalSummary.watchlist,
+      actionItems: finalSummary.actionItems,
+    },
+    usage,
   };
 }

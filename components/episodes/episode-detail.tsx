@@ -367,11 +367,15 @@ export function EpisodeDetail({ initialEpisode }: EpisodeDetailProps) {
           {isProcessing && (
             <div className="mt-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
               <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-primary">
-                  {episode.status === EPISODE_STATUS.PENDING && '等待處理中…'}
-                  {episode.status === EPISODE_STATUS.TRANSCRIBING && '正在語音轉錄…'}
-                  {episode.status === EPISODE_STATUS.SUMMARIZING && '正在生成 AI 摘要…'}
+                  {episode.progressNote ?? (
+                    <>
+                      {episode.status === EPISODE_STATUS.PENDING && '等待處理中…'}
+                      {episode.status === EPISODE_STATUS.TRANSCRIBING && '正在語音轉錄…'}
+                      {episode.status === EPISODE_STATUS.SUMMARIZING && '正在生成 AI 摘要…'}
+                    </>
+                  )}
                 </p>
                 {isPolling && (
                   <p className="mt-0.5 text-[11.5px] text-primary/70">每 3 秒自動更新</p>

@@ -13,6 +13,23 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Podcast 摘要系統',
   description: '個人 Podcast 內容摘要與記錄系統',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: 'Podcast 摘要',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    icon: '/icons/icon.svg',
+    apple: '/icons/icon.svg',
+  },
+};
+
+export const viewport = {
+  themeColor: '#c9410b',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover' as const,
 };
 
 export default function RootLayout({

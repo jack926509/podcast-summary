@@ -1,0 +1,18 @@
+{
+  "name": "Podcast 摘要",
+  "short_name": "Podcast 摘要",
+  "description": "把音檔變成可搜尋的財經摘要",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf6f1",
+  "theme_color": "#c9410b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

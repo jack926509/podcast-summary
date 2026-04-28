@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
           title: true,
           status: true,
           errorMsg: true,
+          progressNote: true,
           duration: true,
           publishedAt: true,
           createdAt: true,

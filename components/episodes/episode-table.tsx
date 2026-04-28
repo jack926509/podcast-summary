@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { SwipeableRow } from '@/components/episodes/swipeable-row';
 import { cn, formatDuration, parseJsonField } from '@/lib/utils';
 import { EPISODE_STATUS, PROCESSING_STATUSES } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
@@ -148,6 +149,18 @@ export function EpisodeTable() {
   const handleRetry = useCallback(async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setRetrying((r) => ({ ...r, [id]: true }));
+    try {
+      await fetch(`/api/episodes/${id}/retry`, { method: 'POST' });
+      mutate();
+    } catch {
+      toast({ title: '重試失敗', description: '請稍後再試', variant: 'destructive' });
+    } finally {
+      setRetrying((r) => ({ ...r, [id]: false }));
+    }
+  }, [mutate, toast]);
+
+  const swipeRetry = useCallback(async (id: string) => {
     setRetrying((r) => ({ ...r, [id]: true }));
     try {
       await fetch(`/api/episodes/${id}/retry`, { method: 'POST' });
@@ -309,10 +322,17 @@ export function EpisodeTable() {
           const isProcessing = (PROCESSING_STATUSES as string[]).includes(ep.status);
           const rail = sentiment ? (SENTIMENT_RAIL[sentiment] ?? 'bg-border') : 'bg-border';
           const monthDay = formatMonthDay(ep.publishedAt ?? ep.createdAt);
+          const canRetry = ep.status === EPISODE_STATUS.ERROR;
 
           return (
-            <Link
+            <SwipeableRow
               key={ep.id}
+              canRetry={canRetry}
+              isRetrying={!!retrying[ep.id]}
+              onRetry={canRetry ? () => swipeRetry(ep.id) : undefined}
+              onDelete={() => setDeleteTarget(ep.id)}
+            >
+            <Link
               href={`/history/${ep.id}`}
               className="group grid grid-cols-[3px_1fr] overflow-hidden rounded-xl border border-border bg-card transition hover:border-foreground/20 hover:shadow-sm"
             >
@@ -379,6 +399,14 @@ export function EpisodeTable() {
                   </p>
                 )}
 
+                {/* Row 2.5: live progress note while processing */}
+                {isProcessing && ep.progressNote && (
+                  <p className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                    <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                    {ep.progressNote}
+                  </p>
+                )}
+
                 {/* Row 3: summary preview */}
                 {overview && !isProcessing && (
                   <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-foreground/75">
@@ -423,6 +451,7 @@ export function EpisodeTable() {
                 )}
               </div>
             </Link>
+            </SwipeableRow>
           );
         })}
 
